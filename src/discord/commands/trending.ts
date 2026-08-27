@@ -336,7 +336,7 @@ async function handleNow(
     limit: interaction.options.getInteger('limit') ?? 5,
     cron: null,
     timezone: 'UTC',
-    style: (interaction.options.getString('style') as Style | null) ?? 'embed',
+    style: (interaction.options.getString('style') as Style | null) ?? 'links',
     mode: (interaction.options.getString('source') as Mode | null) ?? 'report',
     onMissingReport: 'capture',
     managed: false,

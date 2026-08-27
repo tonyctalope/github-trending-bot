@@ -7,6 +7,12 @@ import type { Style } from '../config/schema.js';
 
 export const EMBED_DESCRIPTION_LIMIT = 4096;
 export const MESSAGE_CONTENT_LIMIT = 2000;
+/**
+ * Discord renders at most five link previews per message — measured, not
+ * assumed: ten GitHub URLs in one message produced exactly five cards. Beyond
+ * that the digest is split so no repository silently loses its preview.
+ */
+export const MAX_LINKS_PER_MESSAGE = 5;
 const REPO_DESCRIPTION_LIMIT = 160;
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -92,7 +98,60 @@ export function renderRepoLine(
   return line;
 }
 
-export function renderTrending(options: RenderOptions): MessageCreateOptions {
+/** The one-line summary that sits above a bare GitHub link. */
+export function renderStatsLine(
+  repo: TrendingRepo,
+  index: number,
+  period: Period,
+  movement?: string | null,
+): string {
+  const rank = MEDALS[index] ?? `**${String(index + 1)}.**`;
+  const facts: string[] = [];
+  if (repo.periodStars !== null) {
+    facts.push(`**+${formatNumber(repo.periodStars)}** ⭐ ${PERIOD_LABELS[period]}`);
+  }
+  facts.push(`${formatNumber(repo.stars)} total`);
+  if (repo.language) facts.push(repo.language);
+  if (movement) facts.push(movement);
+  return `${rank} ${facts.join(' · ')}`;
+}
+
+/**
+ * Splits the digest into as many messages as Discord needs to preview every
+ * link, keeping each one inside the content limit.
+ */
+export function chunkLinkMessages(
+  header: string,
+  blocks: string[],
+  footer: string,
+): MessageCreateOptions[] {
+  const messages: MessageCreateOptions[] = [];
+  let current: string[] = [header];
+  let links = 0;
+
+  const flush = (): void => {
+    if (current.length === 0) return;
+    messages.push({ content: current.join('\n'), allowedMentions: { parse: [] } });
+    current = [];
+    links = 0;
+  };
+
+  for (const block of blocks) {
+    const wouldOverflow = [...current, block].join('\n').length > MESSAGE_CONTENT_LIMIT;
+    if (links === MAX_LINKS_PER_MESSAGE || (wouldOverflow && current.length > 0)) flush();
+    current.push(block);
+    links += 1;
+  }
+
+  if (footer) {
+    if ([...current, footer].join('\n').length > MESSAGE_CONTENT_LIMIT) flush();
+    current.push(footer);
+  }
+  flush();
+  return messages;
+}
+
+export function renderTrending(options: RenderOptions): MessageCreateOptions[] {
   const { period, style, limit } = options;
   const repos = options.repos.slice(0, limit);
   const url = buildTrendingUrl({
@@ -101,22 +160,34 @@ export function renderTrending(options: RenderOptions): MessageCreateOptions {
     spokenLanguage: options.spokenLanguage,
   });
   const title = renderTitle(options);
-  const lines = repos.map((repo, index) => renderRepoLine(repo, index, period));
 
   if (repos.length === 0) {
-    return {
-      content: `${title}\nNo repository found for this filter (${url}).`,
-      allowedMentions: { parse: [] },
-    };
+    return [
+      {
+        content: `${title}\nNo repository found for this filter (${url}).`,
+        allowedMentions: { parse: [] },
+      },
+    ];
   }
+
+  if (style === 'links') {
+    const blocks = repos.map(
+      (repo, index) => `${renderStatsLine(repo, index, period)}\n${repo.url}`,
+    );
+    return chunkLinkMessages(`🔥 **${title.replace(/^🔥 /, '')}**`, blocks, `-# <${url}>`);
+  }
+
+  const lines = repos.map((repo, index) => renderRepoLine(repo, index, period));
 
   if (style === 'compact') {
     const header = `${title} — <${url}>`;
-    return {
-      content: joinWithinLimit([header, ...lines], MESSAGE_CONTENT_LIMIT),
-      allowedMentions: { parse: [] },
-      flags: ['SuppressEmbeds'],
-    };
+    return [
+      {
+        content: joinWithinLimit([header, ...lines], MESSAGE_CONTENT_LIMIT),
+        allowedMentions: { parse: [] },
+        flags: ['SuppressEmbeds'],
+      },
+    ];
   }
 
   const embed = new EmbedBuilder()
@@ -127,7 +198,7 @@ export function renderTrending(options: RenderOptions): MessageCreateOptions {
     .setFooter({ text: `github.com/trending · ${String(repos.length)} repositories` })
     .setTimestamp(options.now ?? new Date());
 
-  return { embeds: [embed], allowedMentions: { parse: [] } };
+  return [{ embeds: [embed], allowedMentions: { parse: [] } }];
 }
 
 export interface RenderReportOptions {
@@ -157,22 +228,32 @@ const CAPTURED_AT = new Intl.DateTimeFormat('en-GB', {
  * Renders a frozen period capture: the digest describes a closed calendar period,
  * not the current rolling snapshot.
  */
-export function renderReport(options: RenderReportOptions): MessageCreateOptions {
+export function renderReport(options: RenderReportOptions): MessageCreateOptions[] {
   const { report, previous, style, limit } = options;
   const repos = report.repos.slice(0, limit);
   const title = renderReportTitle(report);
   const footerParts = [
-    `github.com/trending · captured ${CAPTURED_AT.format(new Date(report.capturedAt))} UTC`,
-    `${String(repos.length)} repositories`,
+    `captured ${CAPTURED_AT.format(new Date(report.capturedAt))} UTC`,
+    `top ${String(repos.length)} of ${String(report.repos.length)}`,
   ];
   if (report.partial) footerParts.push('⚠ partial capture, not taken at the period boundary');
   const footer = footerParts.join(' · ');
 
   if (repos.length === 0) {
-    return {
-      content: `${title}\nNo repository in this capture (${report.url}).`,
-      allowedMentions: { parse: [] },
-    };
+    return [
+      {
+        content: `${title}\nNo repository in this capture (${report.url}).`,
+        allowedMentions: { parse: [] },
+      },
+    ];
+  }
+
+  if (style === 'links') {
+    const blocks = repos.map(
+      (repo, index) =>
+        `${renderStatsLine(repo, index, report.period, rankMovement(repo.fullName, index, previous?.repos))}\n${repo.url}`,
+    );
+    return chunkLinkMessages(`📅 **${title.replace(/^📅 /, '')}**`, blocks, `-# ${footer}`);
   }
 
   const lines = repos.map((repo, index) =>
@@ -181,11 +262,13 @@ export function renderReport(options: RenderReportOptions): MessageCreateOptions
 
   if (style === 'compact') {
     const header = `${title} — <${report.url}>`;
-    return {
-      content: joinWithinLimit([header, ...lines, `_${footer}_`], MESSAGE_CONTENT_LIMIT),
-      allowedMentions: { parse: [] },
-      flags: ['SuppressEmbeds'],
-    };
+    return [
+      {
+        content: joinWithinLimit([header, ...lines, `-# ${footer}`], MESSAGE_CONTENT_LIMIT),
+        allowedMentions: { parse: [] },
+        flags: ['SuppressEmbeds'],
+      },
+    ];
   }
 
   const embed = new EmbedBuilder()
@@ -193,8 +276,8 @@ export function renderReport(options: RenderReportOptions): MessageCreateOptions
     .setTitle(title)
     .setURL(report.url)
     .setDescription(joinWithinLimit(lines, EMBED_DESCRIPTION_LIMIT))
-    .setFooter({ text: footer.slice(0, 2048) })
+    .setFooter({ text: `github.com/trending · ${footer}`.slice(0, 2048) })
     .setTimestamp(new Date(report.capturedAt));
 
-  return { embeds: [embed], allowedMentions: { parse: [] } };
+  return [{ embeds: [embed], allowedMentions: { parse: [] } }];
 }

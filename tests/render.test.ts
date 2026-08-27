@@ -3,6 +3,9 @@ import type { APIEmbed } from 'discord.js';
 import type { TrendingReport } from '../src/trending/report.js';
 import {
   EMBED_DESCRIPTION_LIMIT,
+  MAX_LINKS_PER_MESSAGE,
+  chunkLinkMessages,
+  renderStatsLine,
   MESSAGE_CONTENT_LIMIT,
   joinWithinLimit,
   rankMovement,
@@ -34,8 +37,8 @@ function repo(overrides: Partial<TrendingRepo> = {}): TrendingRepo {
   return { ...merged, url: overrides.url ?? `https://github.com/${merged.fullName}` };
 }
 
-function embedOf(message: ReturnType<typeof renderTrending>): APIEmbed {
-  const first = message.embeds?.[0];
+function embedOf(payloads: ReturnType<typeof renderTrending>): APIEmbed {
+  const first = payloads[0]?.embeds?.[0];
   if (!first) throw new Error('no embed rendered');
   return typeof first === 'object' && 'toJSON' in first ? first.toJSON() : first;
 }
@@ -96,7 +99,7 @@ describe('renderRepoLine', () => {
 
 describe('renderTrending', () => {
   it('builds an embed capped at the requested limit', () => {
-    const message = renderTrending({
+    const payloads = renderTrending({
       period: 'daily',
       repos: Array.from({ length: 20 }, (_v, index) =>
         repo({ fullName: `owner/repo-${String(index)}` }),
@@ -104,7 +107,7 @@ describe('renderTrending', () => {
       limit: 5,
       style: 'embed',
     });
-    const embed = embedOf(message);
+    const embed = embedOf(payloads);
 
     expect(embed.title).toBe('🔥 GitHub Trending · Daily');
     expect(embed.url).toBe('https://github.com/trending?since=daily');
@@ -141,22 +144,22 @@ describe('renderTrending', () => {
   });
 
   it('renders plain text without embeds in compact style', () => {
-    const message = renderTrending({
+    const [message] = renderTrending({
       period: 'daily',
       repos: [repo(), repo({ fullName: 'other/repo' })],
       limit: 10,
       style: 'compact',
     });
 
-    expect(message.embeds).toBeUndefined();
-    expect(message.content).toContain('🔥 GitHub Trending · Daily');
-    expect(message.content).toContain('other/repo');
-    expect(message.content?.length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
-    expect(message.flags).toEqual(['SuppressEmbeds']);
+    expect(message?.embeds).toBeUndefined();
+    expect(message?.content).toContain('🔥 GitHub Trending · Daily');
+    expect(message?.content).toContain('other/repo');
+    expect(message?.content?.length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
+    expect(message?.flags).toEqual(['SuppressEmbeds']);
   });
 
   it('keeps compact messages under the Discord content limit', () => {
-    const message = renderTrending({
+    const [message] = renderTrending({
       period: 'daily',
       repos: Array.from({ length: 25 }, (_v, index) =>
         repo({ fullName: `owner/repo-${String(index)}`, description: 'z'.repeat(300) }),
@@ -164,18 +167,23 @@ describe('renderTrending', () => {
       limit: 25,
       style: 'compact',
     });
-    expect(message.content?.length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
+    expect(message?.content?.length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
   });
 
   it('says so instead of posting an empty embed', () => {
-    const message = renderTrending({ period: 'daily', repos: [], limit: 5, style: 'embed' });
-    expect(message.embeds).toBeUndefined();
-    expect(message.content).toContain('No repository found');
+    const [message] = renderTrending({ period: 'daily', repos: [], limit: 5, style: 'embed' });
+    expect(message?.embeds).toBeUndefined();
+    expect(message?.content).toContain('No repository found');
   });
 
   it('never mentions anyone', () => {
-    const message = renderTrending({ period: 'daily', repos: [repo()], limit: 5, style: 'embed' });
-    expect(message.allowedMentions).toEqual({ parse: [] });
+    const [message] = renderTrending({
+      period: 'daily',
+      repos: [repo()],
+      limit: 5,
+      style: 'embed',
+    });
+    expect(message?.allowedMentions).toEqual({ parse: [] });
   });
 });
 
@@ -254,7 +262,7 @@ describe('renderReport', () => {
 
     expect(embed.title).toBe('📅 GitHub Trending · Thursday 27 August 2026');
     expect(embed.footer?.text).toContain('captured 27 Aug, 23:45 UTC');
-    expect(embed.footer?.text).toContain('2 repositories');
+    expect(embed.footer?.text).toContain('top 2 of 2');
     expect(embed.timestamp).toBe('2026-08-27T23:45:00.000Z');
   });
 
@@ -277,7 +285,7 @@ describe('renderReport', () => {
   });
 
   it('honours the limit and the compact style', () => {
-    const message = renderReport({
+    const [message] = renderReport({
       report: report({
         repos: Array.from({ length: 20 }, (_v, index) =>
           repo({ fullName: `owner/r-${String(index)}` }),
@@ -287,15 +295,140 @@ describe('renderReport', () => {
       style: 'compact',
     });
 
-    expect(message.embeds).toBeUndefined();
-    expect(message.content?.match(/github\.com\/owner\/r-/g)).toHaveLength(3);
-    expect(message.content).toContain('captured 27 Aug');
-    expect(message.content?.length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
+    expect(message?.embeds).toBeUndefined();
+    expect(message?.content?.match(/github\.com\/owner\/r-/g)).toHaveLength(3);
+    expect(message?.content).toContain('captured 27 Aug');
+    expect(message?.content?.length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
   });
 
   it('says so rather than posting an empty capture', () => {
-    const message = renderReport({ report: report({ repos: [] }), limit: 5, style: 'embed' });
-    expect(message.embeds).toBeUndefined();
-    expect(message.content).toContain('No repository in this capture');
+    const [message] = renderReport({ report: report({ repos: [] }), limit: 5, style: 'embed' });
+    expect(message?.embeds).toBeUndefined();
+    expect(message?.content).toContain('No repository in this capture');
+  });
+});
+
+describe('links style (the default)', () => {
+  it('posts the bare GitHub url so Discord builds its own card', () => {
+    const [message] = renderTrending({
+      period: 'daily',
+      repos: [repo()],
+      limit: 1,
+      style: 'links',
+    });
+
+    expect(message?.embeds).toBeUndefined();
+    expect(message?.content).toContain('https://github.com/owner/repo');
+    // <> around a url is what suppresses the preview — it must not be there
+    expect(message?.content).not.toContain('<https://github.com/owner/repo>');
+    expect(message?.flags).toBeUndefined();
+  });
+
+  it('puts the stats on the line above the link', () => {
+    const [message] = renderTrending({
+      period: 'daily',
+      repos: [repo()],
+      limit: 1,
+      style: 'links',
+    });
+    const lines = (message?.content ?? '').split('\n');
+
+    expect(lines[1]).toBe('🥇 **+78** ⭐ today · 1,234 total · TypeScript');
+    expect(lines[2]).toBe('https://github.com/owner/repo');
+  });
+
+  it('never mentions anyone', () => {
+    const [message] = renderTrending({
+      period: 'daily',
+      repos: [repo()],
+      limit: 1,
+      style: 'links',
+    });
+    expect(message?.allowedMentions).toEqual({ parse: [] });
+  });
+
+  it('dates the header and footnotes the capture in report mode', () => {
+    const [message] = renderReport({ report: report(), limit: 1, style: 'links' });
+
+    expect(message?.content).toContain('📅 **GitHub Trending · Thursday 27 August 2026**');
+    expect(message?.content).toContain('-# captured 27 Aug, 23:45 UTC · top 1 of 2');
+  });
+
+  it('carries the rank movement into the stats line', () => {
+    const previous = report({
+      key: '2026-08-26',
+      repos: [repo({ fullName: 'other/repo' }), repo()],
+    });
+    const [message] = renderReport({ report: report(), previous, limit: 2, style: 'links' });
+    expect(message?.content).toContain('(↑1)');
+  });
+
+  it('keeps one message while Discord can still preview every link', () => {
+    const messages = renderReport({
+      report: report({
+        repos: Array.from({ length: MAX_LINKS_PER_MESSAGE }, (_v, index) =>
+          repo({ fullName: `owner/r-${String(index)}` }),
+        ),
+      }),
+      limit: MAX_LINKS_PER_MESSAGE,
+      style: 'links',
+    });
+    expect(messages).toHaveLength(1);
+  });
+
+  it('splits beyond five links rather than losing previews', () => {
+    const messages = renderReport({
+      report: report({
+        repos: Array.from({ length: 12 }, (_v, index) =>
+          repo({ fullName: `owner/r-${String(index)}` }),
+        ),
+      }),
+      limit: 12,
+      style: 'links',
+    });
+
+    expect(messages).toHaveLength(3); // 5 + 5 + 2
+    const urls = messages.flatMap(
+      (message) => (message.content ?? '').match(/https:\/\/github/g) ?? [],
+    );
+    expect(urls).toHaveLength(12); // every repository kept its own link
+    for (const message of messages) {
+      expect((message.content ?? '').match(/https:\/\/github/g)?.length ?? 0).toBeLessThanOrEqual(
+        MAX_LINKS_PER_MESSAGE,
+      );
+      expect((message.content ?? '').length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
+    }
+  });
+});
+
+describe('renderStatsLine', () => {
+  it('omits the period delta when GitHub does not provide one', () => {
+    expect(renderStatsLine(repo({ periodStars: null }), 0, 'daily')).toBe(
+      '🥇 1,234 total · TypeScript',
+    );
+  });
+
+  it('numbers the repositories past the podium', () => {
+    expect(renderStatsLine(repo(), 3, 'weekly')).toContain('**4.**');
+    expect(renderStatsLine(repo(), 3, 'weekly')).toContain('this week');
+  });
+});
+
+describe('chunkLinkMessages', () => {
+  it('keeps the header on the first message and the footer on the last', () => {
+    const messages = chunkLinkMessages('HEAD', ['a', 'b', 'c', 'd', 'e', 'f'], '-# FOOT');
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.content).toContain('HEAD');
+    expect(messages[0]?.content).not.toContain('FOOT');
+    expect(messages[1]?.content).toContain('-# FOOT');
+  });
+
+  it('splits when a message would exceed the content limit', () => {
+    const long = 'x'.repeat(700);
+    const messages = chunkLinkMessages('HEAD', [long, long, long], '');
+    expect(messages.length).toBeGreaterThan(1);
+    for (const message of messages) {
+      expect((message.content ?? '').length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
+    }
   });
 });

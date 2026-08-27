@@ -84,13 +84,28 @@ export async function selfcheck(options: { network: boolean }): Promise<number> 
   }
   out(`✔ default schedules valid (${PERIODS.map((p) => `${p}="${DEFAULT_CRON[p]}"`).join(' ')})`);
 
+  const links = renderTrending({
+    period: 'daily',
+    repos: SAMPLE_REPOS,
+    limit: 10,
+    style: 'links',
+  });
+  const linkContent = links.map((message) => message.content ?? '').join('\n');
+  if (!linkContent.includes(SAMPLE_REPOS[0]?.url ?? 'x')) {
+    fail('the default renderer does not post the bare repository link');
+  }
+  if (linkContent.includes(`<${SAMPLE_REPOS[0]?.url ?? 'x'}>`)) {
+    fail('the link is wrapped in <>, which suppresses the Discord preview');
+  }
+  out(`✔ links rendered (${String(links.length)} message(s), ${String(linkContent.length)} chars)`);
+
   const rendered = renderTrending({
     period: 'daily',
     repos: SAMPLE_REPOS,
     limit: 10,
     style: 'embed',
-  });
-  const embed = rendered.embeds?.[0];
+  })[0];
+  const embed = rendered?.embeds?.[0];
   const data: APIEmbed | undefined =
     embed && typeof embed === 'object' && 'toJSON' in embed ? embed.toJSON() : embed;
   const description = data?.description ?? '';

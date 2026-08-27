@@ -33,7 +33,8 @@ Run it with `docker run` and you are done.
   Monday, `monthly` on the 1st — no weekly digest spammed daily. Override with any cron expression.
 - **Filters**: by language (`typescript`, `rust`, `c++`, …), by spoken language (`fr`, `en`, …),
   and by how many repositories to include (1–25).
-- **Two layouts**: rich embed (default) or plain compact text.
+- **Three layouts**: `links` (default — the bare GitHub URL, so Discord renders its own
+  repository card), `embed` (a rich embed built by the bot) or `compact` (plain text, no preview).
 - **Configure from Discord** (`/trending subscribe`, persisted to disk) **or from a YAML file**
   (GitOps-friendly, read-only from Discord). Both work together.
 - **Per-subscription time zone**, so `0 9 * * *` means 9 AM where you are.
@@ -107,7 +108,7 @@ In Discord (requires the **Manage Server** permission):
 
 | Command | What it does |
 | --- | --- |
-| `/trending subscribe period:<daily\|weekly\|monthly\|all>` | Schedule a digest. Options: `channel`, `language`, `spoken_language`, `limit`, `cron`, `timezone`, `style`, `mode`. Defaults to the current channel. |
+| `/trending subscribe period:<daily\|weekly\|monthly\|all>` | Schedule a digest. Options: `channel`, `language`, `spoken_language`, `limit`, `cron`, `timezone`, `style` (`links` / `embed` / `compact`), `mode`. Defaults to the current channel. |
 | `/trending list` | Show the digests configured in this server. Config-file entries are marked 🔒. |
 | `/trending unsubscribe id:<id>` | Remove a digest (autocompleted). |
 | `/trending now period:<daily\|weekly\|monthly>` | Post one digest immediately, without scheduling it. `source:live` for the current snapshot instead of the last closed period. |
@@ -140,6 +141,18 @@ This bot does that, on your side:
 
 Set `mode: live` on a subscription to get the old behaviour instead: GitHub's current rolling
 snapshot, titled `🔥 GitHub Trending · Daily`.
+
+## Layouts
+
+| `style` | What it posts |
+| --- | --- |
+| `links` (default) | A stats line, then the bare repository URL — Discord builds its own card, with the GitHub preview image. |
+| `embed` | One embed built by the bot: every repository on its own line, description included, no preview image. |
+| `compact` | Plain text, previews explicitly suppressed. |
+
+**Discord previews at most five links per message** (measured: ten URLs in one message produce
+five cards). With `style: links` and a `limit` above five, the digest is therefore split into
+several messages — five links each — so no repository silently loses its card.
 
 ## Schedules
 
@@ -174,8 +187,8 @@ still posted from a capture taken on the spot and flagged `⚠ partial capture` 
 | `LOG_LEVEL` | `info` | `trace` … `fatal`. |
 | `LOG_PRETTY` | auto | `true` for human-readable logs (development). |
 | `TZ` / `DEFAULT_TIMEZONE` | `UTC` | Time zone used by subscriptions that do not set one. |
-| `DEFAULT_LIMIT` | `5` | Default repository count. |
-| `DEFAULT_STYLE` | `embed` | `embed` or `compact`. |
+| `DEFAULT_LIMIT` | `1` | Default repository count. |
+| `DEFAULT_STYLE` | `links` | `links`, `embed` or `compact`. |
 | `DEFAULT_MODE` | `report` | `report` (closed period) or `live` (current snapshot). |
 | `CAPTURE_ENABLED` | `true` | Set to `false` to stop freezing periods (only useful with `mode: live`). |
 | `CAPTURE_TIMEZONE` | `UTC` | Time zone of the boundary captures. |
@@ -191,7 +204,7 @@ See [`config.example.yaml`](config.example.yaml). Mount it at `CONFIG_PATH`:
 
 ```yaml
 defaults:
-  limit: 5
+  limit: 1
   timezone: Europe/Paris
 
 subscriptions:
@@ -259,7 +272,7 @@ Captures are pruned automatically (120 daily, 78 weekly, 60 monthly per filter).
 npm ci
 npm run dev            # tsx watch, pretty logs
 npm run verify         # exactly what CI runs: format:check + lint + typecheck + test
-npm test               # vitest (199 tests, offline: HTML fixtures)
+npm test               # vitest (211 tests, offline: HTML fixtures)
 npm run test:coverage
 npm run lint
 npm run format

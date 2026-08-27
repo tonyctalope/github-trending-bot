@@ -9,9 +9,12 @@
 
 # Applied to every subscription below that does not set the field itself.
 defaults:
-  limit: 5
+  limit: 1
   timezone: Europe/Paris
-  style: embed # embed | compact
+  # links  = bare GitHub url, Discord renders its own card (default)
+  # embed  = one embed built by the bot
+  # compact = plain text, no preview
+  style: links
   mode: report # report = the period that just closed | live = the current snapshot
 
 subscriptions:

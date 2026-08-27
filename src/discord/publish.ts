@@ -3,6 +3,7 @@ import {
   type Client,
   type GuildTextBasedChannel,
   type Message,
+  type MessageCreateOptions,
 } from 'discord.js';
 import { fetchTrending } from '../trending/client.js';
 import type { Period, TrendingRepo } from '../trending/types.js';
@@ -64,6 +65,24 @@ async function resolveChannel(client: Client, channelId: string): Promise<GuildT
   return channel;
 }
 
+/**
+ * Sends the payloads in order and returns the first message, which anchors the
+ * digest: the `links` style needs one message per five repositories so Discord
+ * previews every one of them.
+ */
+async function sendAll(
+  channel: GuildTextBasedChannel,
+  payloads: readonly MessageCreateOptions[],
+): Promise<Message> {
+  const sent: Message[] = [];
+  for (const payload of payloads) {
+    sent.push(await channel.send(payload));
+  }
+  const first = sent[0];
+  if (!first) throw new PublishError('the renderer produced no message');
+  return first;
+}
+
 export async function publishTrending(
   client: Client,
   subscription: Subscription,
@@ -77,15 +96,17 @@ export async function publishTrending(
     spokenLanguage: subscription.spokenLanguage,
   });
   const channel = await resolveChannel(client, subscription.channelId);
-  const message = renderTrending({
-    period,
-    repos,
-    limit: subscription.limit,
-    style: subscription.style,
-    language: subscription.language,
-    spokenLanguage: subscription.spokenLanguage,
-  });
-  return channel.send(message);
+  return sendAll(
+    channel,
+    renderTrending({
+      period,
+      repos,
+      limit: subscription.limit,
+      style: subscription.style,
+      language: subscription.language,
+      spokenLanguage: subscription.spokenLanguage,
+    }),
+  );
 }
 
 /** Posts a frozen period capture (the `report` mode). */
@@ -96,11 +117,13 @@ export async function publishReport(
   previous?: TrendingReport | null,
 ): Promise<Message> {
   const channel = await resolveChannel(client, subscription.channelId);
-  const message = renderReport({
-    report,
-    previous,
-    limit: subscription.limit,
-    style: subscription.style,
-  });
-  return channel.send(message);
+  return sendAll(
+    channel,
+    renderReport({
+      report,
+      previous,
+      limit: subscription.limit,
+      style: subscription.style,
+    }),
+  );
 }

@@ -13,7 +13,13 @@ const channelId = '123456789012345678';
 describe('subscriptionInputSchema', () => {
   it('applies the documented defaults', () => {
     const parsed = subscriptionInputSchema.parse({ channelId, periods: ['daily'] });
-    expect(parsed).toMatchObject({ limit: 5, style: 'embed', timezone: 'UTC' });
+    expect(parsed).toMatchObject({
+      limit: 1,
+      style: 'links',
+      timezone: 'UTC',
+      mode: 'report',
+      onMissingReport: 'capture',
+    });
   });
 
   it('rejects a channel id that is not a snowflake', () => {

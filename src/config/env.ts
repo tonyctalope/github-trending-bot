@@ -32,7 +32,7 @@ export const envSchema = z.object({
   REGISTER_COMMANDS: boolean(true),
   DEFAULT_TIMEZONE: z.string().trim().default(DEFAULT_TIMEZONE),
   DEFAULT_LIMIT: z.coerce.number().int().min(1).max(25).default(DEFAULT_LIMIT),
-  DEFAULT_STYLE: styleSchema.default('embed'),
+  DEFAULT_STYLE: styleSchema.default('links'),
   DEFAULT_MODE: modeSchema.default('report'),
 
   /** Boundary captures: when the trending page is frozen for each period (UTC). */

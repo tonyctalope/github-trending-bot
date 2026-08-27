@@ -99,6 +99,15 @@ describe('publishTrending', () => {
     });
 
     expect(query).toMatchObject({ period: 'weekly', language: 'go' });
+    // default style: the bare link, for Discord to preview
+    expect(channel.send.mock.calls[0]?.[0].content).toContain('https://github.com/owner/repo');
+  });
+
+  it('builds our own embed when the subscription asks for it', async () => {
+    const channel = fakeChannel();
+    await publishTrending(fakeClient(channel), subscription({ style: 'embed' }), 'daily', {
+      fetchRepos: () => Promise.resolve(repos),
+    });
     expect(channel.send.mock.calls[0]?.[0].embeds).toHaveLength(1);
   });
 

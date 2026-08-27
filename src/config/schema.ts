@@ -12,9 +12,14 @@ export const DEFAULT_CRON: Record<Period, string> = {
 };
 
 export const MAX_LIMIT = 25;
-export const DEFAULT_LIMIT = 5;
+export const DEFAULT_LIMIT = 1;
 export const DEFAULT_TIMEZONE = 'UTC';
-export const STYLES = ['embed', 'compact'] as const;
+/**
+ * `links` posts the bare GitHub URL and lets Discord build its own repository
+ * card (default). `embed` builds ours instead, `compact` is plain text with no
+ * preview at all.
+ */
+export const STYLES = ['links', 'embed', 'compact'] as const;
 export type Style = (typeof STYLES)[number];
 
 /**
@@ -90,7 +95,7 @@ export const subscriptionInputSchema = z.object({
   limit: z.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
   cron: cronExpression.nullish(),
   timezone: timezone.default(DEFAULT_TIMEZONE),
-  style: styleSchema.default('embed'),
+  style: styleSchema.default('links'),
   mode: modeSchema.default('report'),
   onMissingReport: missingReportSchema.default('capture'),
 });
