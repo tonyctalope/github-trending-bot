@@ -13,6 +13,7 @@ import { logger } from './logger.js';
 import { selfcheck } from './selfcheck.js';
 import { ReportStore } from './store/reports.js';
 import { SubscriptionStore } from './store/subscriptions.js';
+import { ensureWritableDir } from './store/writable.js';
 import { PERIODS, isPeriod, type Period } from './trending/types.js';
 
 function version(): string {
@@ -115,6 +116,7 @@ async function runPost(env: Env, values: Values): Promise<number> {
 }
 
 async function runCaptureCommand(env: Env, values: Values): Promise<number> {
+  await ensureWritableDir(env.DATA_DIR);
   const reports = ReportStore.fromDataDir(env.DATA_DIR, logger);
   const subscriptions = await loadSubscriptions(env);
   const periods = values.all === true ? [...PERIODS] : [readPeriod(values)];
@@ -144,6 +146,7 @@ async function runCaptureCommand(env: Env, values: Values): Promise<number> {
 
 async function runBot(env: Env): Promise<void> {
   const token = requireToken(env);
+  await ensureWritableDir(env.DATA_DIR);
   const store = SubscriptionStore.fromDataDir(env.DATA_DIR, logger);
   await store.load();
   const reports = ReportStore.fromDataDir(env.DATA_DIR, logger);

@@ -3,6 +3,7 @@ import { loadEnv } from './config/env.js';
 import { loadConfigFile } from './config/file.js';
 import { DEFAULT_CRON, isValidCron } from './config/schema.js';
 import { SubscriptionStore } from './store/subscriptions.js';
+import { ensureWritableDir } from './store/writable.js';
 import { renderTrending, EMBED_DESCRIPTION_LIMIT } from './discord/render.js';
 import { fetchTrending } from './trending/client.js';
 import { PERIODS, type TrendingRepo } from './trending/types.js';
@@ -66,6 +67,13 @@ export async function selfcheck(options: { network: boolean }): Promise<number> 
       ? `✔ config file ${config.path}: ${String(config.subscriptions.length)} managed subscription(s)`
       : `· no config file at ${config.path} (slash commands only)`,
   );
+
+  try {
+    await ensureWritableDir(env.DATA_DIR);
+    out(`✔ ${env.DATA_DIR} is writable by uid ${String(process.getuid?.() ?? -1)}`);
+  } catch (cause) {
+    fail((cause as Error).message);
+  }
 
   const store = SubscriptionStore.fromDataDir(env.DATA_DIR);
   await store.load();

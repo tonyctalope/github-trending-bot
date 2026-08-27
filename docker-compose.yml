@@ -7,8 +7,12 @@ services:
     environment:
       TZ: Europe/Paris
       LOG_LEVEL: info
+    # The image runs as uid 1000 (`node`). Bind mounts keep the host ownership,
+    # so if your host user is not 1000 either chown the directories to 1000:1000
+    # or run the container as yourself by uncommenting the line below.
+    #user: '1001:1001'
     volumes:
-      # subscriptions created with /trending subscribe
+      # subscriptions created with /trending subscribe + frozen period captures
       - ./data:/data
       # optional declarative config: put config.yaml in ./config
       - ./config:/config:ro

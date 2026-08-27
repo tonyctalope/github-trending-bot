@@ -64,11 +64,27 @@ https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot+application
 ```bash
 mkdir -p data && echo "DISCORD_TOKEN=your-token-here" > .env
 
+# the image runs as uid 1000; see "Volume permissions" if your user is not 1000
 docker run -d --name github-trending-bot --restart unless-stopped \
   --env-file .env -e TZ=Europe/Paris \
   -v "$PWD/data:/data" \
   ghcr.io/tonyctalope/github-trending-bot:latest
 ```
+
+### Volume permissions
+
+The container runs as the unprivileged `node` user, **uid 1000**. A bind mount keeps
+the ownership it has on the host, so when your host account is not uid 1000 the bot can
+read `/data` but not write to it. Pick one:
+
+```bash
+sudo chown -R 1000:1000 ./data          # give the mount to the image user
+# ... or run the container as yourself instead
+docker run --user "$(id -u):$(id -g)" …  # `user: "$(id -u):$(id -g)"` in compose
+```
+
+The bot checks this at boot and refuses to start with the exact command to run, rather
+than looking healthy and failing later at the first capture. `selfcheck` reports it too.
 
 Or with the provided [`docker-compose.yml`](docker-compose.yml):
 
