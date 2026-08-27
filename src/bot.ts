@@ -31,11 +31,6 @@ export class Bot {
   readonly scheduler: Scheduler;
   readonly deliverer: Deliverer;
   private ready = false;
-  private lastCapture: Record<Period, string | null> = {
-    daily: null,
-    weekly: null,
-    monthly: null,
-  };
 
   constructor(private readonly options: BotOptions) {
     this.client = createClient();
@@ -74,16 +69,22 @@ export class Bot {
 
   async capture(period: Period): Promise<void> {
     const slices = captureSlicesFor(this.subscriptions(), period);
-    const result = await runCapture(this.options.reports, period, slices, {}, this.options.logger);
-    if (!result.skipped && result.saved.length > 0) this.lastCapture[period] = result.key;
+    await runCapture(this.options.reports, period, slices, {}, this.options.logger);
   }
 
-  /** Reads what is already on disk, so /health is truthful right after a restart. */
-  async primeCaptureCache(): Promise<void> {
-    for (const period of PERIODS) {
-      const latest = await this.options.reports.latest(period);
-      this.lastCapture[period] = latest?.key ?? null;
-    }
+  /**
+   * Read from disk on every call, never cached: a one-shot `capture` container
+   * writes to the same volume, and a stale cache would report `null` while the
+   * captures are right there.
+   */
+  private async latestCaptures(): Promise<Record<Period, string | null>> {
+    const entries = await Promise.all(
+      PERIODS.map(async (period) => {
+        const latest = await this.options.reports.latest(period);
+        return [period, latest?.key ?? null] as const;
+      }),
+    );
+    return Object.fromEntries(entries) as Record<Period, string | null>;
   }
 
   private get commandContext(): CommandContext {
@@ -169,14 +170,14 @@ export class Bot {
     }
   }
 
-  healthStatus(): HealthStatus {
+  async healthStatus(): Promise<HealthStatus> {
     return {
       status: this.ready ? 'ok' : 'starting',
       uptimeSeconds: Math.round(process.uptime()),
       user: this.client.user?.tag ?? null,
       guilds: this.client.guilds.cache.size,
       subscriptions: this.subscriptions().length,
-      latestCaptures: { ...this.lastCapture },
+      latestCaptures: await this.latestCaptures(),
       jobs: this.scheduler.status(),
     };
   }

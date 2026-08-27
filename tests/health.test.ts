@@ -21,7 +21,7 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-async function start(status: () => HealthStatus): Promise<string> {
+async function start(status: () => HealthStatus | Promise<HealthStatus>): Promise<string> {
   const port = await freePort();
   const server = startHealthServer(port, status, logger);
   if (!server) throw new Error('health server did not start');
@@ -52,6 +52,25 @@ describe('startHealthServer', () => {
   it('answers on the root path too', async () => {
     const base = await start(() => ({ status: 'ok' }));
     expect((await fetch(base)).status).toBe(200);
+  });
+
+  it('awaits an asynchronous status provider', async () => {
+    const base = await start(() =>
+      Promise.resolve({ status: 'ok', latestCaptures: { daily: '2026-08-27' } }),
+    );
+    const response = await fetch(`${base}/health`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: 'ok',
+      latestCaptures: { daily: '2026-08-27' },
+    });
+  });
+
+  it('answers 503 when the status provider itself fails', async () => {
+    const base = await start(() => Promise.reject(new Error('disk gone')));
+    const response = await fetch(`${base}/health`);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'degraded' });
   });
 
   it('answers 404 on any other path', async () => {

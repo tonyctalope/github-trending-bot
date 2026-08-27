@@ -162,7 +162,6 @@ async function runBot(env: Env): Promise<void> {
   );
 
   const bot = new Bot({ env, store, reports, managed: config.subscriptions, logger });
-  await bot.primeCaptureCache();
   const health = startHealthServer(env.HEALTH_PORT, () => bot.healthStatus(), logger);
 
   let shuttingDown = false;

@@ -259,7 +259,7 @@ Captures are pruned automatically (120 daily, 78 weekly, 60 monthly per filter).
 npm ci
 npm run dev            # tsx watch, pretty logs
 npm run verify         # exactly what CI runs: format:check + lint + typecheck + test
-npm test               # vitest (193 tests, offline: HTML fixtures)
+npm test               # vitest (199 tests, offline: HTML fixtures)
 npm run test:coverage
 npm run lint
 npm run format

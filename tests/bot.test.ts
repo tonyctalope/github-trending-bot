@@ -48,8 +48,8 @@ describe('Bot', () => {
     expect(subscriptions[1]?.managed).toBe(false);
   });
 
-  it('reports "starting" until Discord says ready', () => {
-    expect(bot.healthStatus()).toMatchObject({
+  it('reports "starting" until Discord says ready', async () => {
+    expect(await bot.healthStatus()).toMatchObject({
       status: 'starting',
       user: null,
       guilds: 0,
@@ -84,7 +84,7 @@ describe('Bot', () => {
     await disabled.stop();
   });
 
-  it('shows the captures already on disk right after a restart', async () => {
+  it('reads the captures from disk, including those written by another container', async () => {
     await reports.save({
       period: 'daily',
       key: '2026-08-27',
@@ -96,14 +96,18 @@ describe('Bot', () => {
       repos: [],
     });
 
-    await bot.primeCaptureCache();
-    expect(bot.healthStatus().latestCaptures).toMatchObject({ daily: '2026-08-27', weekly: null });
+    // written after the bot was constructed, exactly like a one-shot `capture` run
+    expect((await bot.healthStatus()).latestCaptures).toMatchObject({
+      daily: '2026-08-27',
+      weekly: null,
+      monthly: null,
+    });
   });
 
-  it('exposes the scheduled jobs in the health payload', () => {
+  it('exposes the scheduled jobs in the health payload', async () => {
     bot.scheduler.sync(bot.subscriptions());
     bot.scheduler.syncCaptures(bot.capturePlans());
-    const status = bot.healthStatus();
+    const status = await bot.healthStatus();
     expect(status.jobs).toHaveLength(5); // 2 subscriptions + 3 boundary captures
     expect(status.uptimeSeconds).toBeGreaterThanOrEqual(0);
   });

@@ -9,7 +9,7 @@ export type HealthStatus = Record<string, unknown> & { status: 'ok' | 'starting'
  */
 export function startHealthServer(
   port: number,
-  getStatus: () => HealthStatus,
+  getStatus: () => HealthStatus | Promise<HealthStatus>,
   logger: Logger,
 ): Server | null {
   if (port === 0) {
@@ -18,17 +18,25 @@ export function startHealthServer(
   }
 
   const server = createServer((request, response) => {
-    if (request.url === '/health' || request.url === '/healthz' || request.url === '/') {
-      const status = getStatus();
-      const body = JSON.stringify(status);
-      response.writeHead(status.status === 'ok' ? 200 : 503, {
-        'content-type': 'application/json',
-        'content-length': Buffer.byteLength(body).toString(),
-      });
-      response.end(body);
+    if (request.url !== '/health' && request.url !== '/healthz' && request.url !== '/') {
+      response.writeHead(404, { 'content-type': 'text/plain' }).end('not found\n');
       return;
     }
-    response.writeHead(404, { 'content-type': 'text/plain' }).end('not found\n');
+    void (async () => {
+      try {
+        const status = await getStatus();
+        const body = JSON.stringify(status);
+        response.writeHead(status.status === 'ok' ? 200 : 503, {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body).toString(),
+        });
+        response.end(body);
+      } catch (error) {
+        logger.error({ err: error }, 'health status failed');
+        response.writeHead(503, { 'content-type': 'application/json' });
+        response.end('{"status":"degraded"}');
+      }
+    })();
   });
 
   server.listen(port, '0.0.0.0', () => {
