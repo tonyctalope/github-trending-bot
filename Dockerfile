@@ -3,12 +3,12 @@
 # The published artefact is plain JavaScript, so dependencies and the TypeScript
 # build run on the *build* platform and are reused for every target platform.
 # Only the tiny runtime stage is emulated, which keeps multi-arch builds fast.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS deps
+FROM --platform=$BUILDPLATFORM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
-FROM --platform=$BUILDPLATFORM node:24-alpine AS build
+FROM --platform=$BUILDPLATFORM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -16,7 +16,7 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:24-alpine AS runtime
+FROM node:26-alpine AS runtime
 LABEL org.opencontainers.image.title="github-trending-bot" \
       org.opencontainers.image.description="Discord bot posting GitHub trending repositories (daily/weekly/monthly) to one or more channels" \
       org.opencontainers.image.source="https://github.com/tonyctalope/github-trending-bot" \
