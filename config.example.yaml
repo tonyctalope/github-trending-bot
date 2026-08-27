@@ -12,6 +12,7 @@ defaults:
   limit: 5
   timezone: Europe/Paris
   style: embed # embed | compact
+  mode: report # report = the period that just closed | live = the current snapshot
 
 subscriptions:
   # Daily digest, every day at 09:00 Europe/Paris.
@@ -37,3 +38,13 @@ subscriptions:
   - channelId: '444444444444444444'
     periods: [weekly]
     spokenLanguage: fr
+
+  # What is trending right now, GitHub rolling snapshot, posted every morning.
+  - channelId: '555555555555555555'
+    periods: [daily]
+    mode: live
+
+  # Never post an approximation: stay silent until a real boundary capture exists.
+  - channelId: '666666666666666666'
+    periods: [monthly]
+    onMissingReport: skip

@@ -8,9 +8,18 @@ import {
   type ChatInputCommandInteraction,
   type GuildTextBasedChannel,
 } from 'discord.js';
-import { MAX_LIMIT, STYLES, cronFor, type Style, type Subscription } from '../../config/schema.js';
+import {
+  MAX_LIMIT,
+  MODES,
+  STYLES,
+  cronFor,
+  type Mode,
+  type Style,
+  type Subscription,
+} from '../../config/schema.js';
 import { PERIODS, isPeriod, type Period } from '../../trending/types.js';
-import { checkChannelAccess, publishTrending } from '../publish.js';
+import { checkChannelAccess } from '../publish.js';
+import type { DeliveryResult } from '../../delivery.js';
 import type { Client } from 'discord.js';
 import type { SubscriptionStore } from '../../store/subscriptions.js';
 import type { Scheduler } from '../../scheduler/scheduler.js';
@@ -85,6 +94,14 @@ export const trendingCommand = new SlashCommandBuilder()
         option
           .setName('spoken_language')
           .setDescription('Filter by the repository spoken language, e.g. fr, en'),
+      )
+      .addStringOption((option) =>
+        option
+          .setName('mode')
+          .setDescription(
+            'report = the closed period just ended (default) · live = trending right now',
+          )
+          .addChoices(...MODES.map((mode) => ({ name: mode, value: mode }))),
       ),
   )
   .addSubcommand((sub) => sub.setName('list').setDescription('List the digests configured here'))
@@ -132,6 +149,12 @@ export const trendingCommand = new SlashCommandBuilder()
           .setName('style')
           .setDescription('Rich embed (default) or plain compact text')
           .addChoices(...STYLES.map((style) => ({ name: style, value: style }))),
+      )
+      .addStringOption((option) =>
+        option
+          .setName('source')
+          .setDescription('report = last closed period (default) · live = trending right now')
+          .addChoices(...MODES.map((mode) => ({ name: mode, value: mode }))),
       ),
   )
   .addSubcommand((sub) =>
@@ -169,12 +192,8 @@ export interface CommandContext {
   managed: () => Subscription[];
   resync: () => void;
   logger: Logger;
-  /** Injection point for tests; defaults to the real publisher. */
-  publish?: (
-    client: Client,
-    subscription: Subscription,
-    period: Period,
-  ) => Promise<{ url: string }>;
+  /** Posts one digest: frozen period capture or live snapshot, per subscription. */
+  deliver: (client: Client, subscription: Subscription, period: Period) => Promise<DeliveryResult>;
 }
 
 function periodsFromChoice(value: string): Period[] {
@@ -187,6 +206,7 @@ function describeSubscription(subscription: Subscription): string {
     .map((period) => `${period} \`${cronFor(subscription, period)}\``)
     .join(', ');
   const extras = [
+    subscription.mode === 'live' ? 'live snapshot' : 'closed period',
     subscription.language ? `lang: ${subscription.language}` : null,
     subscription.spokenLanguage ? `spoken: ${subscription.spokenLanguage}` : null,
     `top ${String(subscription.limit)}`,
@@ -240,6 +260,7 @@ async function handleSubscribe(
         cron: interaction.options.getString('cron'),
         timezone: interaction.options.getString('timezone') ?? undefined,
         style: (interaction.options.getString('style') as Style | null) ?? undefined,
+        mode: (interaction.options.getString('mode') as Mode | null) ?? undefined,
       },
       interaction.user.id,
     );
@@ -316,15 +337,20 @@ async function handleNow(
     cron: null,
     timezone: 'UTC',
     style: (interaction.options.getString('style') as Style | null) ?? 'embed',
+    mode: (interaction.options.getString('source') as Mode | null) ?? 'report',
+    onMissingReport: 'capture',
     managed: false,
     createdBy: interaction.user.id,
     createdAt: new Date().toISOString(),
   };
 
   try {
-    const publish = context.publish ?? publishTrending;
-    const message = await publish(interaction.client, draft, periodValue);
-    await interaction.editReply(`✅ posted in <#${target.id}> — ${message.url}`);
+    const result = await context.deliver(interaction.client, draft, periodValue);
+    await interaction.editReply(
+      result.posted
+        ? `✅ posted in <#${target.id}> — ${result.messageUrl ?? ''}`
+        : `⏳ nothing posted: ${result.reason ?? 'unknown reason'}`,
+    );
   } catch (cause) {
     context.logger.warn({ err: cause }, 'ad-hoc post failed');
     await interaction.editReply(`❌ ${(cause as Error).message}`);
@@ -342,10 +368,10 @@ async function handleStatus(
   }
   const lines = jobs
     .sort((a, b) => (a.nextRun ?? '').localeCompare(b.nextRun ?? ''))
-    .map(
-      (job) =>
-        `\`${job.key}\` <#${job.channelId}> ${job.period} · \`${job.cron}\` (${job.timezone}) → ${job.nextRun ?? 'never'}`,
-    );
+    .map((job) => {
+      const where = job.kind === 'capture' ? '🧊 freezes the page' : `<#${job.channelId ?? '?'}>`;
+      return `\`${job.key}\` ${where} ${job.period} · \`${job.cron}\` (${job.timezone}) → ${job.nextRun ?? 'never'}`;
+    });
   await interaction.editReply(lines.join('\n').slice(0, 1900));
 }
 

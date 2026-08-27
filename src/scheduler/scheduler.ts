@@ -11,10 +11,17 @@ export interface PlannedJob {
   timezone: string;
 }
 
+export interface CaptureJobPlan {
+  period: Period;
+  cron: string;
+  timezone: string;
+}
+
 export interface JobStatus {
+  kind: 'subscription' | 'capture';
   key: string;
-  subscriptionId: string;
-  channelId: string;
+  subscriptionId: string | null;
+  channelId: string | null;
   period: Period;
   cron: string;
   timezone: string;
@@ -39,18 +46,25 @@ export function planJobs(subscriptions: readonly Subscription[]): PlannedJob[] {
 }
 
 export type JobRunner = (subscription: Subscription, period: Period) => Promise<void>;
+export type CaptureRunner = (period: Period) => Promise<void>;
 
 export class Scheduler {
   private jobs = new Map<string, { cron: Cron; job: PlannedJob }>();
+  private captures = new Map<string, { cron: Cron; plan: CaptureJobPlan }>();
 
   constructor(
     private readonly run: JobRunner,
     private readonly logger?: Logger,
+    private readonly capture?: CaptureRunner,
   ) {}
 
-  /** Replaces every running job with the jobs implied by `subscriptions`. */
+  /**
+   * Replaces the subscription jobs with the ones implied by `subscriptions`.
+   * Boundary captures are untouched: a `/trending subscribe` must never cancel
+   * the nightly freeze.
+   */
   sync(subscriptions: readonly Subscription[]): PlannedJob[] {
-    this.stop();
+    this.stopSubscriptions();
     const planned = planJobs(subscriptions);
     for (const job of planned) {
       const cron = new Cron(
@@ -66,6 +80,39 @@ export class Scheduler {
     return planned;
   }
 
+  /**
+   * Boundary captures: one nightly job per period, independent of subscriptions
+   * (the weekly/monthly handlers no-op until the last day of their period).
+   */
+  syncCaptures(plans: readonly CaptureJobPlan[]): CaptureJobPlan[] {
+    for (const { cron } of this.captures.values()) cron.stop();
+    this.captures.clear();
+    if (!this.capture) return [];
+
+    for (const plan of plans) {
+      const key = `capture:${plan.period}`;
+      const cron = new Cron(
+        plan.cron,
+        { name: key, timezone: plan.timezone, protect: true, catch: true },
+        () => {
+          void this.executeCapture(plan);
+        },
+      );
+      this.captures.set(key, { cron, plan });
+    }
+    this.logger?.info({ captures: this.captures.size }, 'boundary captures scheduled');
+    return [...this.captures.values()].map(({ plan }) => plan);
+  }
+
+  private async executeCapture(plan: CaptureJobPlan): Promise<void> {
+    if (!this.capture) return;
+    try {
+      await this.capture(plan.period);
+    } catch (cause) {
+      this.logger?.error({ period: plan.period, err: cause }, 'boundary capture failed');
+    }
+  }
+
   private async execute(job: PlannedJob): Promise<void> {
     const context = { job: job.key, channelId: job.subscription.channelId, period: job.period };
     try {
@@ -77,7 +124,18 @@ export class Scheduler {
   }
 
   status(): JobStatus[] {
-    return [...this.jobs.values()].map(({ cron, job }) => ({
+    const captures: JobStatus[] = [...this.captures.values()].map(({ cron, plan }) => ({
+      kind: 'capture' as const,
+      key: `capture:${plan.period}`,
+      subscriptionId: null,
+      channelId: null,
+      period: plan.period,
+      cron: plan.cron,
+      timezone: plan.timezone,
+      nextRun: cron.nextRun()?.toISOString() ?? null,
+    }));
+    const subscriptions: JobStatus[] = [...this.jobs.values()].map(({ cron, job }) => ({
+      kind: 'subscription' as const,
       key: job.key,
       subscriptionId: job.subscription.id,
       channelId: job.subscription.channelId,
@@ -86,14 +144,26 @@ export class Scheduler {
       timezone: job.timezone,
       nextRun: cron.nextRun()?.toISOString() ?? null,
     }));
+    return [...subscriptions, ...captures];
   }
 
+  /** Number of subscription jobs (captures are counted by `captureSize`). */
   get size(): number {
     return this.jobs.size;
   }
 
-  stop(): void {
+  get captureSize(): number {
+    return this.captures.size;
+  }
+
+  private stopSubscriptions(): void {
     for (const { cron } of this.jobs.values()) cron.stop();
     this.jobs.clear();
+  }
+
+  stop(): void {
+    this.stopSubscriptions();
+    for (const { cron } of this.captures.values()) cron.stop();
+    this.captures.clear();
   }
 }

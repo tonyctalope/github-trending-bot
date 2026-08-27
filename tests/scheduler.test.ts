@@ -19,6 +19,17 @@ function scheduler(run: ConstructorParameters<typeof Scheduler>[0]): Scheduler {
   return instance;
 }
 
+function withCaptures(capture: ConstructorParameters<typeof Scheduler>[2]): Scheduler {
+  const instance = new Scheduler(() => Promise.resolve(), undefined, capture);
+  schedulers.push(instance);
+  return instance;
+}
+
+const CAPTURE_PLANS = [
+  { period: 'daily' as const, cron: '45 23 * * *', timezone: 'UTC' },
+  { period: 'weekly' as const, cron: '50 23 * * 0', timezone: 'UTC' },
+];
+
 afterEach(() => {
   for (const instance of schedulers.splice(0)) instance.stop();
 });
@@ -118,5 +129,82 @@ describe('Scheduler', () => {
       { timeout: 5000, interval: 100 },
     );
     expect(instance.size).toBe(1);
+  });
+});
+
+describe('Scheduler — boundary captures', () => {
+  it('schedules one capture per plan and reports the next run', () => {
+    const instance = withCaptures(() => Promise.resolve());
+    const planned = instance.syncCaptures(CAPTURE_PLANS);
+
+    expect(planned).toHaveLength(2);
+    expect(instance.captureSize).toBe(2);
+    const captures = instance.status().filter((job) => job.kind === 'capture');
+    expect(captures.map((job) => job.key)).toEqual(['capture:daily', 'capture:weekly']);
+    for (const job of captures) {
+      expect(job.channelId).toBeNull();
+      expect(job.subscriptionId).toBeNull();
+      expect(Date.parse(job.nextRun!)).toBeGreaterThan(Date.now());
+    }
+  });
+
+  it('schedules nothing when no capture runner was wired', () => {
+    const instance = scheduler(() => Promise.resolve());
+    expect(instance.syncCaptures(CAPTURE_PLANS)).toEqual([]);
+    expect(instance.captureSize).toBe(0);
+  });
+
+  it('keeps subscription jobs and captures independent', () => {
+    const instance = withCaptures(() => Promise.resolve());
+    instance.sync([subscription({ periods: ['daily', 'weekly'] })]);
+    instance.syncCaptures(CAPTURE_PLANS);
+    expect(instance.size).toBe(2);
+    expect(instance.captureSize).toBe(2);
+
+    instance.sync([]); // a subscription change must not cancel the captures
+    expect(instance.size).toBe(0);
+    expect(instance.captureSize).toBe(2);
+
+    instance.syncCaptures([]); // and the other way round
+    instance.sync([subscription()]);
+    expect(instance.captureSize).toBe(0);
+    expect(instance.size).toBe(1);
+  });
+
+  it('runs the capture when its cron fires', async () => {
+    const capture = vi.fn(() => Promise.resolve());
+    const instance = withCaptures(capture);
+    instance.syncCaptures([{ period: 'daily', cron: '* * * * * *', timezone: 'UTC' }]);
+
+    await vi.waitFor(
+      () => {
+        expect(capture).toHaveBeenCalledWith('daily');
+      },
+      { timeout: 4000, interval: 100 },
+    );
+  });
+
+  it('survives a failing capture', async () => {
+    const capture = vi.fn(() => Promise.reject(new Error('GitHub answered HTTP 503')));
+    const instance = withCaptures(capture);
+    instance.syncCaptures([{ period: 'daily', cron: '* * * * * *', timezone: 'UTC' }]);
+
+    await vi.waitFor(
+      () => {
+        expect(capture.mock.calls.length).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 5000, interval: 100 },
+    );
+    expect(instance.captureSize).toBe(1);
+  });
+
+  it('stop() clears both kinds of job', () => {
+    const instance = withCaptures(() => Promise.resolve());
+    instance.sync([subscription()]);
+    instance.syncCaptures(CAPTURE_PLANS);
+    instance.stop();
+    expect(instance.size).toBe(0);
+    expect(instance.captureSize).toBe(0);
+    expect(instance.status()).toEqual([]);
   });
 });

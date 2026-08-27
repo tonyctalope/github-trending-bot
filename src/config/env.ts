@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { DEFAULT_LIMIT, DEFAULT_TIMEZONE, formatZodError, styleSchema } from './schema.js';
+import {
+  DEFAULT_CAPTURE_CRON,
+  DEFAULT_LIMIT,
+  DEFAULT_TIMEZONE,
+  formatZodError,
+  modeSchema,
+  styleSchema,
+} from './schema.js';
 
 const boolean = (fallback: boolean) =>
   z
@@ -26,6 +33,14 @@ export const envSchema = z.object({
   DEFAULT_TIMEZONE: z.string().trim().default(DEFAULT_TIMEZONE),
   DEFAULT_LIMIT: z.coerce.number().int().min(1).max(25).default(DEFAULT_LIMIT),
   DEFAULT_STYLE: styleSchema.default('embed'),
+  DEFAULT_MODE: modeSchema.default('report'),
+
+  /** Boundary captures: when the trending page is frozen for each period (UTC). */
+  CAPTURE_ENABLED: boolean(true),
+  CAPTURE_TIMEZONE: z.string().trim().default('UTC'),
+  CAPTURE_CRON_DAILY: z.string().trim().default(DEFAULT_CAPTURE_CRON.daily),
+  CAPTURE_CRON_WEEKLY: z.string().trim().default(DEFAULT_CAPTURE_CRON.weekly),
+  CAPTURE_CRON_MONTHLY: z.string().trim().default(DEFAULT_CAPTURE_CRON.monthly),
 });
 
 export type Env = z.output<typeof envSchema>;

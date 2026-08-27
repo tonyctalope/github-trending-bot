@@ -6,7 +6,8 @@ import {
 } from 'discord.js';
 import { fetchTrending } from '../trending/client.js';
 import type { Period, TrendingRepo } from '../trending/types.js';
-import { renderTrending } from './render.js';
+import type { TrendingReport } from '../trending/report.js';
+import { renderReport, renderTrending } from './render.js';
 import type { Subscription } from '../config/schema.js';
 
 export const REQUIRED_PERMISSIONS = [
@@ -83,6 +84,23 @@ export async function publishTrending(
     style: subscription.style,
     language: subscription.language,
     spokenLanguage: subscription.spokenLanguage,
+  });
+  return channel.send(message);
+}
+
+/** Posts a frozen period capture (the `report` mode). */
+export async function publishReport(
+  client: Client,
+  subscription: Subscription,
+  report: TrendingReport,
+  previous?: TrendingReport | null,
+): Promise<Message> {
+  const channel = await resolveChannel(client, subscription.channelId);
+  const message = renderReport({
+    report,
+    previous,
+    limit: subscription.limit,
+    style: subscription.style,
   });
   return channel.send(message);
 }

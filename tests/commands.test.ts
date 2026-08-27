@@ -75,8 +75,12 @@ let store: SubscriptionStore;
 let scheduler: Scheduler;
 let managed: Subscription[];
 let context: CommandContext;
-let publish: Mock<
-  (client: Client, subscription: Subscription, period: Period) => Promise<{ url: string }>
+let deliver: Mock<
+  (
+    client: Client,
+    subscription: Subscription,
+    period: Period,
+  ) => Promise<{ posted: boolean; reason?: string; messageUrl?: string }>
 >;
 let resync: Mock<() => void>;
 
@@ -86,7 +90,9 @@ beforeEach(async () => {
   await store.load();
   scheduler = new Scheduler(() => Promise.resolve());
   managed = [];
-  publish = vi.fn(() => Promise.resolve({ url: 'https://discord.com/channels/1/2/3' }));
+  deliver = vi.fn(() =>
+    Promise.resolve({ posted: true, messageUrl: 'https://discord.com/channels/1/2/3' }),
+  );
   resync = vi.fn(() => {
     scheduler.sync([...managed, ...store.list()]);
   });
@@ -96,7 +102,7 @@ beforeEach(async () => {
     managed: () => managed,
     resync,
     logger,
-    publish,
+    deliver,
   };
 });
 
@@ -322,14 +328,19 @@ describe('/trending now', () => {
     await handleTrendingCommand(interaction, context);
 
     expect(store.list()).toEqual([]);
-    const [, draft, period] = publish.mock.calls[0] as [unknown, Subscription, string];
-    expect(draft).toMatchObject({ channelId: CURRENT_CHANNEL, language: 'go', limit: 3 });
+    const [, draft, period] = deliver.mock.calls[0] as [unknown, Subscription, string];
+    expect(draft).toMatchObject({
+      channelId: CURRENT_CHANNEL,
+      language: 'go',
+      limit: 3,
+      mode: 'report',
+    });
     expect(period).toBe('monthly');
     expect(replies[0]).toContain('✅ posted');
   });
 
   it('reports why the post failed', async () => {
-    publish.mockImplementation(() => Promise.reject(new Error('GitHub answered HTTP 503')));
+    deliver.mockImplementation(() => Promise.reject(new Error('GitHub answered HTTP 503')));
     const { interaction, replies } = fakeInteraction({
       subcommand: 'now',
       strings: { period: 'daily' },

@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { APIEmbed } from 'discord.js';
+import type { TrendingReport } from '../src/trending/report.js';
 import {
   EMBED_DESCRIPTION_LIMIT,
   MESSAGE_CONTENT_LIMIT,
   joinWithinLimit,
+  rankMovement,
+  renderReport,
+  renderReportTitle,
   renderRepoLine,
   renderTitle,
   renderTrending,
@@ -184,5 +188,114 @@ describe('helpers', () => {
   it('joinWithinLimit drops the overflowing tail', () => {
     expect(joinWithinLimit(['aaa', 'bbb', 'ccc'], 7)).toBe('aaa\nbbb');
     expect(joinWithinLimit(['aaa'], 2)).toBe('');
+  });
+});
+
+function report(overrides: Partial<TrendingReport> = {}): TrendingReport {
+  return {
+    period: 'daily',
+    key: '2026-08-27',
+    capturedAt: '2026-08-27T23:45:00.000Z',
+    url: 'https://github.com/trending?since=daily',
+    language: null,
+    spokenLanguage: null,
+    partial: false,
+    repos: [repo(), repo({ fullName: 'other/repo' })],
+    ...overrides,
+  };
+}
+
+describe('renderReportTitle', () => {
+  it('names the closed day', () => {
+    expect(renderReportTitle(report())).toBe('📅 GitHub Trending · Thursday 27 August 2026');
+  });
+
+  it('names the closed week and month', () => {
+    expect(renderReportTitle(report({ period: 'weekly', key: '2026-W35' }))).toBe(
+      '📅 GitHub Trending · Week 35 · 24 Aug – 30 Aug 2026',
+    );
+    expect(renderReportTitle(report({ period: 'monthly', key: '2026-08' }))).toBe(
+      '📅 GitHub Trending · August 2026',
+    );
+  });
+
+  it('appends the filters', () => {
+    expect(renderReportTitle(report({ language: 'rust', spokenLanguage: 'fr' }))).toContain(
+      '· rust · fr',
+    );
+  });
+});
+
+describe('rankMovement', () => {
+  const previous = [
+    repo({ fullName: 'a/a' }),
+    repo({ fullName: 'b/b' }),
+    repo({ fullName: 'c/c' }),
+  ];
+
+  it('says nothing when there is no previous capture', () => {
+    expect(rankMovement('a/a', 0, undefined)).toBeNull();
+  });
+
+  it('flags a newcomer', () => {
+    expect(rankMovement('new/new', 0, previous)).toBe('(new)');
+  });
+
+  it('reports climbs, falls and holds', () => {
+    expect(rankMovement('c/c', 0, previous)).toBe('(↑2)');
+    expect(rankMovement('a/a', 2, previous)).toBe('(↓2)');
+    expect(rankMovement('b/b', 1, previous)).toBe('(=)');
+  });
+});
+
+describe('renderReport', () => {
+  it('dates the digest and states when the page was frozen', () => {
+    const embed = embedOf(renderReport({ report: report(), limit: 10, style: 'embed' }));
+
+    expect(embed.title).toBe('📅 GitHub Trending · Thursday 27 August 2026');
+    expect(embed.footer?.text).toContain('captured 27 Aug, 23:45 UTC');
+    expect(embed.footer?.text).toContain('2 repositories');
+    expect(embed.timestamp).toBe('2026-08-27T23:45:00.000Z');
+  });
+
+  it('warns in the footer when the capture was not taken at the boundary', () => {
+    const embed = embedOf(
+      renderReport({ report: report({ partial: true }), limit: 10, style: 'embed' }),
+    );
+    expect(embed.footer?.text).toContain('partial capture');
+  });
+
+  it('shows rank movements against the previous capture', () => {
+    const previous = report({
+      key: '2026-08-26',
+      repos: [repo({ fullName: 'other/repo' }), repo()],
+    });
+    const embed = embedOf(renderReport({ report: report(), previous, limit: 10, style: 'embed' }));
+
+    expect(embed.description).toContain('(↑1)');
+    expect(embed.description).toContain('(↓1)');
+  });
+
+  it('honours the limit and the compact style', () => {
+    const message = renderReport({
+      report: report({
+        repos: Array.from({ length: 20 }, (_v, index) =>
+          repo({ fullName: `owner/r-${String(index)}` }),
+        ),
+      }),
+      limit: 3,
+      style: 'compact',
+    });
+
+    expect(message.embeds).toBeUndefined();
+    expect(message.content?.match(/github\.com\/owner\/r-/g)).toHaveLength(3);
+    expect(message.content).toContain('captured 27 Aug');
+    expect(message.content?.length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
+  });
+
+  it('says so rather than posting an empty capture', () => {
+    const message = renderReport({ report: report({ repos: [] }), limit: 5, style: 'embed' });
+    expect(message.embeds).toBeUndefined();
+    expect(message.content).toContain('No repository in this capture');
   });
 });
