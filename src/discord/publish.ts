@@ -22,12 +22,15 @@ export class PublishError extends Error {
   }
 }
 
+/** What the publisher asks the scraper for; injectable so tests stay offline. */
+export interface FetchReposOptions {
+  period: Period;
+  language?: string | null;
+  spokenLanguage?: string | null;
+}
+
 export interface PublishDeps {
-  fetchRepos?: (options: {
-    period: Period;
-    language?: string | null;
-    spokenLanguage?: string | null;
-  }) => Promise<TrendingRepo[]>;
+  fetchRepos?: (options: FetchReposOptions) => Promise<TrendingRepo[]>;
 }
 
 /** Human-readable reason why the bot cannot post in a channel, or `null` if it can. */

@@ -1,9 +1,15 @@
-import { PermissionFlagsBits, type Client, type GuildTextBasedChannel } from 'discord.js';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  PermissionFlagsBits,
+  type Client,
+  type GuildTextBasedChannel,
+  type MessageCreateOptions,
+} from 'discord.js';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import {
   REQUIRED_PERMISSIONS,
   checkChannelAccess,
   publishTrending,
+  type FetchReposOptions,
 } from '../src/discord/publish.js';
 import { subscriptionSchema, type Subscription } from '../src/config/schema.js';
 import type { TrendingRepo } from '../src/trending/types.js';
@@ -26,16 +32,18 @@ const repos: TrendingRepo[] = [
   },
 ];
 
-function fakeChannel(granted: bigint[] = REQUIRED_PERMISSIONS): GuildTextBasedChannel & {
-  send: ReturnType<typeof vi.fn>;
-} {
+type SendMock = Mock<(payload: MessageCreateOptions) => Promise<{ url: string }>>;
+
+function fakeChannel(
+  granted: bigint[] = REQUIRED_PERMISSIONS,
+): GuildTextBasedChannel & { send: SendMock } {
   return {
     id: channelId,
     isTextBased: () => true,
     isDMBased: () => false,
     permissionsFor: () => ({ has: (flag: bigint) => granted.includes(flag) }),
     send: vi.fn(() => Promise.resolve({ url: 'https://discord.com/channels/1/2/3' })),
-  } as unknown as GuildTextBasedChannel & { send: ReturnType<typeof vi.fn> };
+  } as unknown as GuildTextBasedChannel & { send: SendMock };
 }
 
 function fakeClient(channel: unknown): Client {
@@ -80,15 +88,18 @@ describe('publishTrending', () => {
   it('sends the rendered digest to the subscription channel', async () => {
     const channel = fakeChannel();
     const client = fakeClient(channel);
-    const fetchRepos = vi.fn(() => Promise.resolve(repos));
+    let query: FetchReposOptions | undefined;
+    const fetchRepos = (options: FetchReposOptions): Promise<TrendingRepo[]> => {
+      query = options;
+      return Promise.resolve(repos);
+    };
 
     await publishTrending(client, subscription({ limit: 3, language: 'go' }), 'weekly', {
       fetchRepos,
     });
 
-    expect(fetchRepos.mock.calls[0]?.[0]).toMatchObject({ period: 'weekly', language: 'go' });
-    const payload = channel.send.mock.calls[0]?.[0] as { embeds?: unknown[] };
-    expect(payload.embeds).toHaveLength(1);
+    expect(query).toMatchObject({ period: 'weekly', language: 'go' });
+    expect(channel.send.mock.calls[0]?.[0].embeds).toHaveLength(1);
   });
 
   it('honours the compact style of the subscription', async () => {
@@ -97,8 +108,7 @@ describe('publishTrending', () => {
       fetchRepos: () => Promise.resolve(repos),
     });
 
-    const payload = channel.send.mock.calls[0]?.[0] as { content?: string };
-    expect(payload.content).toContain('owner/repo');
+    expect(channel.send.mock.calls[0]?.[0].content).toContain('owner/repo');
   });
 
   it('fails clearly when the channel no longer exists', async () => {
@@ -147,6 +157,6 @@ describe('publishTrending', () => {
         fetchRepos: () => Promise.reject(new Error('GitHub answered HTTP 503')),
       }),
     ).rejects.toThrow(/HTTP 503/);
-    expect(channel.send).not.toHaveBeenCalled();
+    expect(channel.send.mock.calls).toHaveLength(0);
   });
 });

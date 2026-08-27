@@ -176,6 +176,7 @@ docker run --rm --env-file .env ghcr.io/tonyctalope/github-trending-bot \
 ```bash
 npm ci
 npm run dev            # tsx watch, pretty logs
+npm run verify         # exactly what CI runs: format:check + lint + typecheck + test
 npm test               # vitest (118 tests, offline: HTML fixtures)
 npm run test:coverage
 npm run lint

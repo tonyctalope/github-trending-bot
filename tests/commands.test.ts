@@ -8,7 +8,7 @@ import type {
   Client,
   GuildTextBasedChannel,
 } from 'discord.js';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   handleTrendingAutocomplete,
   handleTrendingCommand,
@@ -17,6 +17,7 @@ import {
 } from '../src/discord/commands/trending.js';
 import { REQUIRED_PERMISSIONS } from '../src/discord/publish.js';
 import { Scheduler } from '../src/scheduler/scheduler.js';
+import type { Period } from '../src/trending/types.js';
 import { SubscriptionStore } from '../src/store/subscriptions.js';
 import { subscriptionSchema, type Subscription } from '../src/config/schema.js';
 
@@ -74,8 +75,10 @@ let store: SubscriptionStore;
 let scheduler: Scheduler;
 let managed: Subscription[];
 let context: CommandContext;
-let publish: ReturnType<typeof vi.fn>;
-let resync: ReturnType<typeof vi.fn>;
+let publish: Mock<
+  (client: Client, subscription: Subscription, period: Period) => Promise<{ url: string }>
+>;
+let resync: Mock<() => void>;
 
 beforeEach(async () => {
   const dir = await mkdtemp(join(tmpdir(), 'trending-cmd-'));
@@ -93,7 +96,7 @@ beforeEach(async () => {
     managed: () => managed,
     resync,
     logger,
-    publish: publish as unknown as CommandContext['publish'],
+    publish,
   };
 });
 
