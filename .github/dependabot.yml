@@ -12,6 +12,14 @@ updates:
       production-patches:
         dependency-type: production
         update-types: [minor, patch]
+    ignore:
+      # Must track the Node major actually used at runtime (node:24-alpine).
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
+      # typescript-eslint still declares `typescript <6.1.0`; moving to 7.x would
+      # silently drop type-aware linting. Bump both together, deliberately.
+      - dependency-name: 'typescript'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
@@ -22,3 +30,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      # A Node major jump also means bumping @types/node and engines: do it by hand.
+      - dependency-name: 'node'
+        update-types: [version-update:semver-major]
