@@ -1,0 +1,39 @@
+# Optional declarative configuration.
+#
+# Subscriptions listed here are re-applied at every start and cannot be removed
+# with /trending unsubscribe (they show up as 🔒 in /trending list). Anything
+# created with /trending subscribe lives in ${DATA_DIR}/subscriptions.json
+# instead, and both sets run side by side.
+#
+# Mount this file at ${CONFIG_PATH} (default /config/config.yaml).
+
+# Applied to every subscription below that does not set the field itself.
+defaults:
+  limit: 5
+  timezone: Europe/Paris
+  style: embed # embed | compact
+
+subscriptions:
+  # Daily digest, every day at 09:00 Europe/Paris.
+  - channelId: '111111111111111111'
+    periods: [daily]
+
+  # Daily *and* weekly in the same channel: the daily digest posts every day,
+  # the weekly one every Monday — each period keeps its natural cadence.
+  - channelId: '222222222222222222'
+    periods: [daily, weekly]
+    limit: 10
+
+  # Monthly TypeScript-only top 3, in plain text, on the 1st at 08:30 UTC.
+  - channelId: '333333333333333333'
+    periods: [monthly]
+    language: typescript
+    limit: 3
+    style: compact
+    cron: '30 8 1 * *'
+    timezone: UTC
+
+  # Weekly digest of repositories whose spoken language is French.
+  - channelId: '444444444444444444'
+    periods: [weekly]
+    spokenLanguage: fr

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+# local runtime state & secrets
+.env
+.env.*
+!.env.example
+data/
+config/config.yaml
+config.yaml
+!config.example.yaml
