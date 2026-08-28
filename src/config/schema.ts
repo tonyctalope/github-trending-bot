@@ -23,6 +23,18 @@ export const STYLES = ['links', 'embed', 'compact'] as const;
 export type Style = (typeof STYLES)[number];
 
 /**
+ * How the repositories of a digest are ordered.
+ *
+ * `stars` ranks by the stars actually gained during the period — the objective
+ * "winner of the day". `page` keeps GitHub's own order, which is a momentum
+ * algorithm, not a gain ranking: on 27 Aug 2026 its first row had +1,984 while
+ * the fourth had +4,260. Report sites mirror that order in their tables, so
+ * `page` is the option to pick when you want to match them row for row.
+ */
+export const RANKINGS = ['stars', 'page'] as const;
+export type Ranking = (typeof RANKINGS)[number];
+
+/**
  * `report` posts the frozen capture of the period that just closed — what the
  * public report sites publish. `live` posts GitHub's current rolling trending.
  */
@@ -78,6 +90,7 @@ const timezone = z
 export const periodSchema = z.enum(PERIODS);
 export const styleSchema = z.enum(STYLES);
 export const modeSchema = z.enum(MODES);
+export const rankingSchema = z.enum(RANKINGS);
 export const missingReportSchema = z.enum(MISSING_REPORT_BEHAVIOURS);
 
 /** What a user (or a config file) may provide when creating a subscription. */
@@ -96,6 +109,7 @@ export const subscriptionInputSchema = z.object({
   cron: cronExpression.nullish(),
   timezone: timezone.default(DEFAULT_TIMEZONE),
   style: styleSchema.default('links'),
+  rank: rankingSchema.default('stars'),
   mode: modeSchema.default('report'),
   onMissingReport: missingReportSchema.default('capture'),
 });
@@ -133,6 +147,7 @@ export const configSubscriptionSchema = z
     cron: cronExpression.nullish(),
     timezone: timezone.optional(),
     style: styleSchema.optional(),
+    rank: rankingSchema.optional(),
     mode: modeSchema.optional(),
     onMissingReport: missingReportSchema.optional(),
   })
@@ -144,6 +159,7 @@ export const configFileSchema = z.object({
       limit: z.number().int().min(1).max(MAX_LIMIT).optional(),
       timezone: timezone.optional(),
       style: styleSchema.optional(),
+      rank: rankingSchema.optional(),
       mode: modeSchema.optional(),
       language: z.string().trim().min(1).max(50).nullish(),
       spokenLanguage: z.string().trim().min(2).max(5).nullish(),

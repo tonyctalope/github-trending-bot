@@ -43,6 +43,7 @@ export async function loadConfigFile(path: string, env: Env): Promise<LoadConfig
       timezone: entry.timezone ?? defaults.timezone ?? env.DEFAULT_TIMEZONE,
       style: entry.style ?? defaults.style ?? env.DEFAULT_STYLE,
       mode: entry.mode ?? defaults.mode ?? env.DEFAULT_MODE,
+      rank: entry.rank ?? defaults.rank ?? env.DEFAULT_RANK,
       onMissingReport: entry.onMissingReport ?? undefined,
       language: entry.language ?? defaults.language ?? null,
       spokenLanguage: entry.spokenLanguage ?? defaults.spokenLanguage ?? null,

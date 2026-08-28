@@ -16,7 +16,7 @@ import {
   renderTrending,
   truncate,
 } from '../src/discord/render.js';
-import type { TrendingRepo } from '../src/trending/types.js';
+import { rankRepos, type TrendingRepo } from '../src/trending/types.js';
 
 function repo(overrides: Partial<TrendingRepo> = {}): TrendingRepo {
   const merged: TrendingRepo = {
@@ -430,5 +430,103 @@ describe('chunkLinkMessages', () => {
     for (const message of messages) {
       expect((message.content ?? '').length).toBeLessThanOrEqual(MESSAGE_CONTENT_LIMIT);
     }
+  });
+});
+
+describe('rankRepos', () => {
+  const repos = [
+    repo({ fullName: 'a/page-first', periodStars: 1984 }),
+    repo({ fullName: 'b/small', periodStars: 279 }),
+    repo({ fullName: 'c/middle', periodStars: 2093 }),
+    repo({ fullName: 'd/biggest', periodStars: 4260 }),
+  ];
+
+  it('puts the biggest gain of the period first', () => {
+    expect(rankRepos(repos, 'stars').map((r) => r.fullName)).toEqual([
+      'd/biggest',
+      'c/middle',
+      'a/page-first',
+      'b/small',
+    ]);
+  });
+
+  it('keeps GitHub own order when asked to', () => {
+    expect(rankRepos(repos, 'page').map((r) => r.fullName)).toEqual(repos.map((r) => r.fullName));
+  });
+
+  it('is stable: equal gains keep the page order', () => {
+    const tied = [
+      repo({ fullName: 'a/a', periodStars: 100 }),
+      repo({ fullName: 'b/b', periodStars: 100 }),
+      repo({ fullName: 'c/c', periodStars: 100 }),
+    ];
+    expect(rankRepos(tied, 'stars').map((r) => r.fullName)).toEqual(['a/a', 'b/b', 'c/c']);
+  });
+
+  it('sends repositories without a counter to the end', () => {
+    const mixed = [
+      repo({ fullName: 'a/unknown', periodStars: null }),
+      repo({ fullName: 'b/small', periodStars: 5 }),
+    ];
+    expect(rankRepos(mixed, 'stars').map((r) => r.fullName)).toEqual(['b/small', 'a/unknown']);
+  });
+
+  it('does not mutate the input', () => {
+    const input = [...repos];
+    rankRepos(input, 'stars');
+    expect(input.map((r) => r.fullName)).toEqual(repos.map((r) => r.fullName));
+  });
+});
+
+describe('ranking inside a digest', () => {
+  const capture = report({
+    repos: [
+      repo({ fullName: 'a/page-first', periodStars: 1984 }),
+      repo({ fullName: 'b/biggest', periodStars: 4260 }),
+    ],
+  });
+
+  it('a top-1 digest posts the biggest gain, not GitHub first row', () => {
+    const [message] = renderReport({ report: capture, limit: 1, style: 'links' });
+    expect(message?.content).toContain('https://github.com/b/biggest');
+    expect(message?.content).not.toContain('https://github.com/a/page-first');
+    expect(message?.content).toContain('**+4,260**');
+  });
+
+  it('rank: page restores GitHub own order', () => {
+    const [message] = renderReport({
+      report: capture,
+      limit: 1,
+      style: 'links',
+      ranking: 'page',
+    });
+    expect(message?.content).toContain('https://github.com/a/page-first');
+  });
+
+  it('compares movements between equally ranked lists', () => {
+    const previous = report({
+      key: '2026-08-26',
+      repos: [
+        repo({ fullName: 'b/biggest', periodStars: 10 }),
+        repo({ fullName: 'a/page-first', periodStars: 20 }),
+      ],
+    });
+    // ranked by gain, previous is [a, b] and current is [b, a]: both moved by one
+    const [message] = renderReport({ report: capture, previous, limit: 2, style: 'links' });
+    expect(message?.content).toContain('(↑1)');
+    expect(message?.content).toContain('(↓1)');
+  });
+
+  it('also applies to the live snapshot', () => {
+    const [message] = renderTrending({
+      period: 'daily',
+      repos: [
+        repo({ fullName: 'a/small', periodStars: 1 }),
+        repo({ fullName: 'b/big', periodStars: 900 }),
+      ],
+      limit: 1,
+      style: 'links',
+    });
+    expect(message?.content).toContain('https://github.com/b/big');
   });
 });

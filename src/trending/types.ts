@@ -34,3 +34,25 @@ export interface TrendingRepo {
 export function isPeriod(value: string): value is Period {
   return (PERIODS as readonly string[]).includes(value);
 }
+
+/**
+ * Orders the repositories of a digest.
+ *
+ * `stars` puts the biggest gain of the period first — repositories GitHub did
+ * not give a counter for keep their page order at the end. The sort is stable,
+ * so equal gains stay in GitHub's order.
+ */
+export function rankRepos(
+  repos: readonly TrendingRepo[],
+  ranking: 'stars' | 'page',
+): TrendingRepo[] {
+  if (ranking === 'page') return [...repos];
+  return repos
+    .map((repo, index) => ({ repo, index }))
+    .sort((a, b) => {
+      const left = a.repo.periodStars ?? -1;
+      const right = b.repo.periodStars ?? -1;
+      return right - left || a.index - b.index;
+    })
+    .map((entry) => entry.repo);
+}

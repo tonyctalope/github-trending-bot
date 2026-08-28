@@ -5,6 +5,7 @@ import {
   DEFAULT_TIMEZONE,
   formatZodError,
   modeSchema,
+  rankingSchema,
   styleSchema,
 } from './schema.js';
 
@@ -33,6 +34,7 @@ export const envSchema = z.object({
   DEFAULT_TIMEZONE: z.string().trim().default(DEFAULT_TIMEZONE),
   DEFAULT_LIMIT: z.coerce.number().int().min(1).max(25).default(DEFAULT_LIMIT),
   DEFAULT_STYLE: styleSchema.default('links'),
+  DEFAULT_RANK: rankingSchema.default('stars'),
   DEFAULT_MODE: modeSchema.default('report'),
 
   /** Boundary captures: when the trending page is frozen for each period (UTC). */

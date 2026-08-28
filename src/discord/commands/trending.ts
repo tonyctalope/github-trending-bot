@@ -11,9 +11,11 @@ import {
 import {
   MAX_LIMIT,
   MODES,
+  RANKINGS,
   STYLES,
   cronFor,
   type Mode,
+  type Ranking,
   type Style,
   type Subscription,
 } from '../../config/schema.js';
@@ -102,6 +104,12 @@ export const trendingCommand = new SlashCommandBuilder()
             'report = the closed period just ended (default) · live = trending right now',
           )
           .addChoices(...MODES.map((mode) => ({ name: mode, value: mode }))),
+      )
+      .addStringOption((option) =>
+        option
+          .setName('rank')
+          .setDescription('stars = biggest gain first (default) · page = GitHub own order')
+          .addChoices(...RANKINGS.map((ranking) => ({ name: ranking, value: ranking }))),
       ),
   )
   .addSubcommand((sub) => sub.setName('list').setDescription('List the digests configured here'))
@@ -155,6 +163,12 @@ export const trendingCommand = new SlashCommandBuilder()
           .setName('source')
           .setDescription('report = last closed period (default) · live = trending right now')
           .addChoices(...MODES.map((mode) => ({ name: mode, value: mode }))),
+      )
+      .addStringOption((option) =>
+        option
+          .setName('rank')
+          .setDescription('stars = biggest gain first (default) · page = GitHub own order')
+          .addChoices(...RANKINGS.map((ranking) => ({ name: ranking, value: ranking }))),
       ),
   )
   .addSubcommand((sub) =>
@@ -207,6 +221,7 @@ function describeSubscription(subscription: Subscription): string {
     .join(', ');
   const extras = [
     subscription.mode === 'live' ? 'live snapshot' : 'closed period',
+    subscription.rank === 'page' ? 'GitHub order' : 'top gain',
     subscription.language ? `lang: ${subscription.language}` : null,
     subscription.spokenLanguage ? `spoken: ${subscription.spokenLanguage}` : null,
     `top ${String(subscription.limit)}`,
@@ -261,6 +276,7 @@ async function handleSubscribe(
         timezone: interaction.options.getString('timezone') ?? undefined,
         style: (interaction.options.getString('style') as Style | null) ?? undefined,
         mode: (interaction.options.getString('mode') as Mode | null) ?? undefined,
+        rank: (interaction.options.getString('rank') as Ranking | null) ?? undefined,
       },
       interaction.user.id,
     );
@@ -337,6 +353,7 @@ async function handleNow(
     cron: null,
     timezone: 'UTC',
     style: (interaction.options.getString('style') as Style | null) ?? 'links',
+    rank: (interaction.options.getString('rank') as Ranking | null) ?? 'stars',
     mode: (interaction.options.getString('source') as Mode | null) ?? 'report',
     onMissingReport: 'capture',
     managed: false,

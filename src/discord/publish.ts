@@ -103,6 +103,7 @@ export async function publishTrending(
       repos,
       limit: subscription.limit,
       style: subscription.style,
+      ranking: subscription.rank,
       language: subscription.language,
       spokenLanguage: subscription.spokenLanguage,
     }),
@@ -124,6 +125,7 @@ export async function publishReport(
       previous,
       limit: subscription.limit,
       style: subscription.style,
+      ranking: subscription.rank,
     }),
   );
 }

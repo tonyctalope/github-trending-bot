@@ -16,6 +16,7 @@ describe('subscriptionInputSchema', () => {
     expect(parsed).toMatchObject({
       limit: 1,
       style: 'links',
+      rank: 'stars',
       timezone: 'UTC',
       mode: 'report',
       onMissingReport: 'capture',

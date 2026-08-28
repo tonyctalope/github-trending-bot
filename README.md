@@ -108,7 +108,7 @@ In Discord (requires the **Manage Server** permission):
 
 | Command | What it does |
 | --- | --- |
-| `/trending subscribe period:<daily\|weekly\|monthly\|all>` | Schedule a digest. Options: `channel`, `language`, `spoken_language`, `limit`, `cron`, `timezone`, `style` (`links` / `embed` / `compact`), `mode`. Defaults to the current channel. |
+| `/trending subscribe period:<daily\|weekly\|monthly\|all>` | Schedule a digest. Options: `channel`, `language`, `spoken_language`, `limit`, `cron`, `timezone`, `style` (`links` / `embed` / `compact`), `rank`, `mode`. Defaults to the current channel. |
 | `/trending list` | Show the digests configured in this server. Config-file entries are marked 🔒. |
 | `/trending unsubscribe id:<id>` | Remove a digest (autocompleted). |
 | `/trending now period:<daily\|weekly\|monthly>` | Post one digest immediately, without scheduling it. `source:live` for the current snapshot instead of the last closed period. |
@@ -141,6 +141,21 @@ This bot does that, on your side:
 
 Set `mode: live` on a subscription to get the old behaviour instead: GitHub's current rolling
 snapshot, titled `🔥 GitHub Trending · Daily`.
+
+## Ranking
+
+GitHub's trending order is a momentum algorithm, **not** a ranking by stars gained: on
+27 August 2026 the first row of the page had `+1,984` while the fourth had `+4,260`. Report
+sites mirror that order in their tables, which is why their rank 1 is often not the biggest
+gainer of the day either.
+
+| `rank` | Order |
+| --- | --- |
+| `stars` (default) | Biggest gain of the period first — the objective winner. Repositories GitHub gives no counter for keep their page order, at the end. |
+| `page` | GitHub's own order, row for row, to match what the report sites' tables show. |
+
+The sort is stable, so equal gains keep GitHub's order, and rank movements are computed
+between two lists ordered the same way.
 
 ## Layouts
 
@@ -189,6 +204,7 @@ still posted from a capture taken on the spot and flagged `⚠ partial capture` 
 | `TZ` / `DEFAULT_TIMEZONE` | `UTC` | Time zone used by subscriptions that do not set one. |
 | `DEFAULT_LIMIT` | `1` | Default repository count. |
 | `DEFAULT_STYLE` | `links` | `links`, `embed` or `compact`. |
+| `DEFAULT_RANK` | `stars` | `stars` (biggest gain first) or `page` (GitHub's order). |
 | `DEFAULT_MODE` | `report` | `report` (closed period) or `live` (current snapshot). |
 | `CAPTURE_ENABLED` | `true` | Set to `false` to stop freezing periods (only useful with `mode: live`). |
 | `CAPTURE_TIMEZONE` | `UTC` | Time zone of the boundary captures. |
@@ -272,7 +288,7 @@ Captures are pruned automatically (120 daily, 78 weekly, 60 monthly per filter).
 npm ci
 npm run dev            # tsx watch, pretty logs
 npm run verify         # exactly what CI runs: format:check + lint + typecheck + test
-npm test               # vitest (211 tests, offline: HTML fixtures)
+npm test               # vitest (220 tests, offline: HTML fixtures)
 npm run test:coverage
 npm run lint
 npm run format

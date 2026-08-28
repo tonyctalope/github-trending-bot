@@ -1,9 +1,15 @@
 import { EmbedBuilder, escapeMarkdown, type MessageCreateOptions } from 'discord.js';
 import { buildTrendingUrl } from '../trending/client.js';
 import { formatPeriodLabel } from '../trending/period.js';
-import { PERIOD_LABELS, PERIOD_TITLES, type Period, type TrendingRepo } from '../trending/types.js';
+import {
+  PERIOD_LABELS,
+  PERIOD_TITLES,
+  rankRepos,
+  type Period,
+  type TrendingRepo,
+} from '../trending/types.js';
 import type { TrendingReport } from '../trending/report.js';
-import type { Style } from '../config/schema.js';
+import type { Ranking, Style } from '../config/schema.js';
 
 export const EMBED_DESCRIPTION_LIMIT = 4096;
 export const MESSAGE_CONTENT_LIMIT = 2000;
@@ -27,6 +33,7 @@ export interface RenderOptions {
   repos: TrendingRepo[];
   limit: number;
   style: Style;
+  ranking?: Ranking;
   language?: string | null;
   spokenLanguage?: string | null;
   now?: Date;
@@ -153,7 +160,7 @@ export function chunkLinkMessages(
 
 export function renderTrending(options: RenderOptions): MessageCreateOptions[] {
   const { period, style, limit } = options;
-  const repos = options.repos.slice(0, limit);
+  const repos = rankRepos(options.repos, options.ranking ?? 'stars').slice(0, limit);
   const url = buildTrendingUrl({
     period,
     language: options.language,
@@ -207,6 +214,7 @@ export interface RenderReportOptions {
   previous?: TrendingReport | null;
   limit: number;
   style: Style;
+  ranking?: Ranking;
 }
 
 export function renderReportTitle(report: TrendingReport): string {
@@ -230,7 +238,11 @@ const CAPTURED_AT = new Intl.DateTimeFormat('en-GB', {
  */
 export function renderReport(options: RenderReportOptions): MessageCreateOptions[] {
   const { report, previous, style, limit } = options;
-  const repos = report.repos.slice(0, limit);
+  const ranking = options.ranking ?? 'stars';
+  const ranked = rankRepos(report.repos, ranking);
+  const repos = ranked.slice(0, limit);
+  // the movement must compare like with like: rank the previous capture too
+  const previousRanked = previous ? rankRepos(previous.repos, ranking) : undefined;
   const title = renderReportTitle(report);
   const footerParts = [
     `captured ${CAPTURED_AT.format(new Date(report.capturedAt))} UTC`,
@@ -251,13 +263,13 @@ export function renderReport(options: RenderReportOptions): MessageCreateOptions
   if (style === 'links') {
     const blocks = repos.map(
       (repo, index) =>
-        `${renderStatsLine(repo, index, report.period, rankMovement(repo.fullName, index, previous?.repos))}\n${repo.url}`,
+        `${renderStatsLine(repo, index, report.period, rankMovement(repo.fullName, index, previousRanked))}\n${repo.url}`,
     );
     return chunkLinkMessages(`📅 **${title.replace(/^📅 /, '')}**`, blocks, `-# ${footer}`);
   }
 
   const lines = repos.map((repo, index) =>
-    renderRepoLine(repo, index, report.period, rankMovement(repo.fullName, index, previous?.repos)),
+    renderRepoLine(repo, index, report.period, rankMovement(repo.fullName, index, previousRanked)),
   );
 
   if (style === 'compact') {
