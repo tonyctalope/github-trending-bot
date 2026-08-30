@@ -11,6 +11,7 @@ import { createClient } from './discord/client.js';
 import { startHealthServer } from './health.js';
 import { logger } from './logger.js';
 import { selfcheck } from './selfcheck.js';
+import { HistoryStore } from './store/history.js';
 import { ReportStore } from './store/reports.js';
 import { SubscriptionStore } from './store/subscriptions.js';
 import { ensureWritableDir } from './store/writable.js';
@@ -88,7 +89,11 @@ async function runPost(env: Env, values: Values): Promise<number> {
     mode: typeof values.source === 'string' ? values.source : undefined,
   });
 
-  const deliverer = new Deliverer(ReportStore.fromDataDir(env.DATA_DIR, logger), logger);
+  const deliverer = new Deliverer(
+    ReportStore.fromDataDir(env.DATA_DIR, logger),
+    HistoryStore.fromDataDir(env.DATA_DIR, logger),
+    logger,
+  );
   const client = createClient();
   const token = requireToken(env);
   await new Promise<void>((resolve, reject) => {
@@ -161,7 +166,14 @@ async function runBot(env: Env): Promise<void> {
     'configuration loaded',
   );
 
-  const bot = new Bot({ env, store, reports, managed: config.subscriptions, logger });
+  const bot = new Bot({
+    env,
+    store,
+    reports,
+    history: HistoryStore.fromDataDir(env.DATA_DIR, logger),
+    managed: config.subscriptions,
+    logger,
+  });
   const health = startHealthServer(env.HEALTH_PORT, () => bot.healthStatus(), logger);
 
   let shuttingDown = false;

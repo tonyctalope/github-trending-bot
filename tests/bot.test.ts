@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Bot } from '../src/bot.js';
 import { loadEnv } from '../src/config/env.js';
 import { subscriptionSchema } from '../src/config/schema.js';
+import { HistoryStore } from '../src/store/history.js';
 import { ReportStore } from '../src/store/reports.js';
 import { SubscriptionStore } from '../src/store/subscriptions.js';
 
 const channelId = '123456789012345678';
 let bot: Bot;
 let reports: ReportStore;
+let history: HistoryStore;
 
 beforeEach(async () => {
   const dir = await mkdtemp(join(tmpdir(), 'trending-bot-'));
@@ -19,11 +21,13 @@ beforeEach(async () => {
   await store.load();
   await store.add({ channelId, periods: ['daily'] });
   reports = ReportStore.fromDataDir(dir);
+  history = HistoryStore.fromDataDir(dir);
 
   bot = new Bot({
     env: loadEnv({}),
     store,
     reports,
+    history,
     managed: [
       subscriptionSchema.parse({
         id: 'file-1',
@@ -77,6 +81,7 @@ describe('Bot', () => {
       env: loadEnv({ CAPTURE_ENABLED: 'false' }),
       store,
       reports,
+      history,
       managed: [],
       logger: pino({ level: 'silent' }),
     });

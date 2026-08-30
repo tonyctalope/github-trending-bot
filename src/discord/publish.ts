@@ -9,6 +9,7 @@ import { fetchTrending } from '../trending/client.js';
 import type { Period, TrendingRepo } from '../trending/types.js';
 import type { TrendingReport } from '../trending/report.js';
 import { renderReport, renderTrending } from './render.js';
+import { selectRepos } from '../trending/select.js';
 import type { Subscription } from '../config/schema.js';
 
 export const REQUIRED_PERMISSIONS = [
@@ -29,6 +30,12 @@ export interface FetchReposOptions {
   period: Period;
   language?: string | null;
   spokenLanguage?: string | null;
+}
+
+/** What a publish call posted, so the caller can remember it. */
+export interface PublishOutcome {
+  message: Message;
+  chosen: TrendingRepo[];
 }
 
 export interface PublishDeps {
@@ -88,7 +95,8 @@ export async function publishTrending(
   subscription: Subscription,
   period: Period,
   deps: PublishDeps = {},
-): Promise<Message> {
+  exclude?: ReadonlySet<string>,
+): Promise<PublishOutcome> {
   const fetchRepos = deps.fetchRepos ?? fetchTrending;
   const repos = await fetchRepos({
     period,
@@ -96,7 +104,12 @@ export async function publishTrending(
     spokenLanguage: subscription.spokenLanguage,
   });
   const channel = await resolveChannel(client, subscription.channelId);
-  return sendAll(
+  const { chosen } = selectRepos(repos, {
+    ranking: subscription.rank,
+    limit: subscription.limit,
+    exclude,
+  });
+  const message = await sendAll(
     channel,
     renderTrending({
       period,
@@ -104,10 +117,12 @@ export async function publishTrending(
       limit: subscription.limit,
       style: subscription.style,
       ranking: subscription.rank,
+      exclude,
       language: subscription.language,
       spokenLanguage: subscription.spokenLanguage,
     }),
   );
+  return { message, chosen };
 }
 
 /** Posts a frozen period capture (the `report` mode). */
@@ -116,9 +131,15 @@ export async function publishReport(
   subscription: Subscription,
   report: TrendingReport,
   previous?: TrendingReport | null,
-): Promise<Message> {
+  exclude?: ReadonlySet<string>,
+): Promise<PublishOutcome> {
   const channel = await resolveChannel(client, subscription.channelId);
-  return sendAll(
+  const { chosen } = selectRepos(report.repos, {
+    ranking: subscription.rank,
+    limit: subscription.limit,
+    exclude,
+  });
+  const message = await sendAll(
     channel,
     renderReport({
       report,
@@ -126,6 +147,8 @@ export async function publishReport(
       limit: subscription.limit,
       style: subscription.style,
       ranking: subscription.rank,
+      exclude,
     }),
   );
+  return { message, chosen };
 }

@@ -13,6 +13,9 @@ export const DEFAULT_CRON: Record<Period, string> = {
 
 export const MAX_LIMIT = 25;
 export const DEFAULT_LIMIT = 1;
+/** How many past digests a repository stays out of, by default. */
+export const DEFAULT_COOLDOWN = 7;
+export const MAX_COOLDOWN = 90;
 export const DEFAULT_TIMEZONE = 'UTC';
 /**
  * `links` posts the bare GitHub URL and lets Discord build its own repository
@@ -26,12 +29,13 @@ export type Style = (typeof STYLES)[number];
  * How the repositories of a digest are ordered.
  *
  * `stars` ranks by the stars actually gained during the period — the objective
- * "winner of the day". `page` keeps GitHub's own order, which is a momentum
- * algorithm, not a gain ranking: on 27 Aug 2026 its first row had +1,984 while
- * the fourth had +4,260. Report sites mirror that order in their tables, so
- * `page` is the option to pick when you want to match them row for row.
+ * "winner of the day". `momentum` ranks by growth relative to the repository's
+ * own size, which surfaces small fast risers instead of the same large project
+ * every day. `page` keeps GitHub's own order, which is neither: on 27 Aug 2026
+ * its first row had +1,984 while the fourth had +4,260. Report sites mirror that
+ * order in their tables, so `page` matches them row for row.
  */
-export const RANKINGS = ['stars', 'page'] as const;
+export const RANKINGS = ['stars', 'momentum', 'page'] as const;
 export type Ranking = (typeof RANKINGS)[number];
 
 /**
@@ -110,6 +114,12 @@ export const subscriptionInputSchema = z.object({
   timezone: timezone.default(DEFAULT_TIMEZONE),
   style: styleSchema.default('links'),
   rank: rankingSchema.default('stars'),
+  /**
+   * Skip repositories this subscription already posted in its last N digests,
+   * so a project that keeps topping the charts does not fill the channel every
+   * day. 0 disables it.
+   */
+  cooldown: z.number().int().min(0).max(MAX_COOLDOWN).default(DEFAULT_COOLDOWN),
   mode: modeSchema.default('report'),
   onMissingReport: missingReportSchema.default('capture'),
 });
@@ -148,6 +158,7 @@ export const configSubscriptionSchema = z
     timezone: timezone.optional(),
     style: styleSchema.optional(),
     rank: rankingSchema.optional(),
+    cooldown: z.number().int().min(0).max(MAX_COOLDOWN).optional(),
     mode: modeSchema.optional(),
     onMissingReport: missingReportSchema.optional(),
   })
@@ -160,6 +171,7 @@ export const configFileSchema = z.object({
       timezone: timezone.optional(),
       style: styleSchema.optional(),
       rank: rankingSchema.optional(),
+      cooldown: z.number().int().min(0).max(MAX_COOLDOWN).optional(),
       mode: modeSchema.optional(),
       language: z.string().trim().min(1).max(50).nullish(),
       spokenLanguage: z.string().trim().min(2).max(5).nullish(),

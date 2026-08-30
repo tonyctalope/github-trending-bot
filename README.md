@@ -108,7 +108,7 @@ In Discord (requires the **Manage Server** permission):
 
 | Command | What it does |
 | --- | --- |
-| `/trending subscribe period:<daily\|weekly\|monthly\|all>` | Schedule a digest. Options: `channel`, `language`, `spoken_language`, `limit`, `cron`, `timezone`, `style` (`links` / `embed` / `compact`), `rank`, `mode`. Defaults to the current channel. |
+| `/trending subscribe period:<daily\|weekly\|monthly\|all>` | Schedule a digest. Options: `channel`, `language`, `spoken_language`, `limit`, `cron`, `timezone`, `style` (`links` / `embed` / `compact`), `rank`, `cooldown`, `mode`. Defaults to the current channel. |
 | `/trending list` | Show the digests configured in this server. Config-file entries are marked 🔒. |
 | `/trending unsubscribe id:<id>` | Remove a digest (autocompleted). |
 | `/trending now period:<daily\|weekly\|monthly>` | Post one digest immediately, without scheduling it. `source:live` for the current snapshot instead of the last closed period. |
@@ -152,10 +152,33 @@ gainer of the day either.
 | `rank` | Order |
 | --- | --- |
 | `stars` (default) | Biggest gain of the period first — the objective winner. Repositories GitHub gives no counter for keep their page order, at the end. |
+| `momentum` | Fastest growth relative to the repository's own size, which surfaces small fast risers instead of the same large project every day. |
 | `page` | GitHub's own order, row for row, to match what the report sites' tables show. |
 
 The sort is stable, so equal gains keep GitHub's order, and rank movements are computed
 between two lists ordered the same way.
+
+### Cooldown
+
+A repository that keeps topping the charts would otherwise fill the channel: `tt-a1i/archify`
+was the biggest gain of 27, 28 **and** 29 August 2026. So each subscription remembers what it
+posted, and skips those repositories in its next `cooldown` digests (default **7**, `0` disables
+it). Replayed on those three captures:
+
+| | 27 Aug | 28 Aug | 29 Aug |
+| --- | --- | --- | --- |
+| `cooldown: 0` | archify | archify | archify |
+| `cooldown: 7` | archify | gods-eye-view | scientific-agent-skills |
+
+The footnote of each digest says how many repositories the cooldown pushed aside. If it would
+swallow the whole capture, it is ignored for that digest rather than posting nothing — and the
+footnote says that too. History lives in `${DATA_DIR}/history/<subscription>.json`, per period.
+
+The report sites elect one repository a day and never repeat it either, but their pick is
+**editorial, not a formula**: measured over 24–29 August 2026 it matched the biggest gain 1 day
+out of 6, the fastest relative growth 2 out of 6, and it consistently skipped what any formula
+would pick (`openai/codex` was the top gainer three days running and was never elected). The
+cooldown reproduces the variety, not their exact choice.
 
 ## Layouts
 
@@ -204,7 +227,8 @@ still posted from a capture taken on the spot and flagged `⚠ partial capture` 
 | `TZ` / `DEFAULT_TIMEZONE` | `UTC` | Time zone used by subscriptions that do not set one. |
 | `DEFAULT_LIMIT` | `1` | Default repository count. |
 | `DEFAULT_STYLE` | `links` | `links`, `embed` or `compact`. |
-| `DEFAULT_RANK` | `stars` | `stars` (biggest gain first) or `page` (GitHub's order). |
+| `DEFAULT_RANK` | `stars` | `stars`, `momentum` or `page`. |
+| `DEFAULT_COOLDOWN` | `7` | Digests a repository stays out of after being posted; `0` disables. |
 | `DEFAULT_MODE` | `report` | `report` (closed period) or `live` (current snapshot). |
 | `CAPTURE_ENABLED` | `true` | Set to `false` to stop freezing periods (only useful with `mode: live`). |
 | `CAPTURE_TIMEZONE` | `UTC` | Time zone of the boundary captures. |
@@ -274,6 +298,7 @@ docker run --rm -v "$PWD/data:/data" ghcr.io/tonyctalope/github-trending-bot \
 
 ```
 /data/subscriptions.json                            created with /trending subscribe
+/data/history/9bcdb5.json                           what each subscription already posted
 /data/reports/daily/2026-08-27.json                 frozen captures, one per period …
 /data/reports/daily/2026-08-27__lang-rust.json      … and per filter
 /data/reports/weekly/2026-W35.json
@@ -288,7 +313,7 @@ Captures are pruned automatically (120 daily, 78 weekly, 60 monthly per filter).
 npm ci
 npm run dev            # tsx watch, pretty logs
 npm run verify         # exactly what CI runs: format:check + lint + typecheck + test
-npm test               # vitest (220 tests, offline: HTML fixtures)
+npm test               # vitest (243 tests, offline: HTML fixtures)
 npm run test:coverage
 npm run lint
 npm run format

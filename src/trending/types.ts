@@ -36,23 +36,32 @@ export function isPeriod(value: string): value is Period {
 }
 
 /**
+ * Growth over the period relative to where the repository started — the metric
+ * that stops a repository that is merely big from winning every single day.
+ * A missing counter scores below everything else.
+ */
+export function momentum(repo: TrendingRepo): number {
+  if (repo.periodStars === null) return -1;
+  const before = repo.stars - repo.periodStars;
+  return before > 0 ? repo.periodStars / before : repo.periodStars;
+}
+
+/**
  * Orders the repositories of a digest.
  *
- * `stars` puts the biggest gain of the period first — repositories GitHub did
- * not give a counter for keep their page order at the end. The sort is stable,
- * so equal gains stay in GitHub's order.
+ * `stars` puts the biggest gain of the period first, `momentum` the fastest
+ * relative growth, `page` keeps GitHub's own order. The sort is stable, so ties
+ * stay in GitHub's order and repositories without a counter end up last.
  */
 export function rankRepos(
   repos: readonly TrendingRepo[],
-  ranking: 'stars' | 'page',
+  ranking: 'stars' | 'momentum' | 'page',
 ): TrendingRepo[] {
   if (ranking === 'page') return [...repos];
+  const score = (repo: TrendingRepo): number =>
+    ranking === 'momentum' ? momentum(repo) : (repo.periodStars ?? -1);
   return repos
     .map((repo, index) => ({ repo, index }))
-    .sort((a, b) => {
-      const left = a.repo.periodStars ?? -1;
-      const right = b.repo.periodStars ?? -1;
-      return right - left || a.index - b.index;
-    })
+    .sort((a, b) => score(b.repo) - score(a.repo) || a.index - b.index)
     .map((entry) => entry.repo);
 }

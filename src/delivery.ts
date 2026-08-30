@@ -1,7 +1,9 @@
-import type { Client, Message } from 'discord.js';
+import type { Client } from 'discord.js';
 import { publishReport, publishTrending } from './discord/publish.js';
 import { captureReport, sliceKey, type TrendingReport } from './trending/report.js';
+import { periodKeyAt } from './trending/period.js';
 import type { ReportStore } from './store/reports.js';
+import type { HistoryStore } from './store/history.js';
 import type { Subscription } from './config/schema.js';
 import type { Period } from './trending/types.js';
 import type { Logger } from './logger.js';
@@ -30,19 +32,52 @@ export interface DeliveryDeps {
 export class Deliverer {
   constructor(
     private readonly reports: ReportStore,
+    private readonly history: HistoryStore,
     private readonly logger: Logger,
     private readonly deps: DeliveryDeps = {},
   ) {}
+
+  /** What this subscription posted recently, and should not repeat. */
+  private async cooldownSet(
+    subscription: Subscription,
+    period: Period,
+  ): Promise<ReadonlySet<string>> {
+    if (subscription.cooldown <= 0) return new Set();
+    return this.history.recent(subscription.id, period, subscription.cooldown);
+  }
+
+  private async remember(
+    subscription: Subscription,
+    period: Period,
+    key: string,
+    repos: readonly string[],
+  ): Promise<void> {
+    if (subscription.cooldown <= 0 || repos.length === 0) return;
+    await this.history.record(subscription.id, {
+      period,
+      key,
+      postedAt: new Date().toISOString(),
+      repos: [...repos],
+    });
+  }
 
   async deliver(
     client: Client,
     subscription: Subscription,
     period: Period,
   ): Promise<DeliveryResult> {
+    const exclude = await this.cooldownSet(subscription, period);
+
     if (subscription.mode === 'live') {
       const publish = this.deps.publishLive ?? publishTrending;
-      const message: Message = await publish(client, subscription, period);
-      return { posted: true, messageUrl: message.url };
+      const outcome = await publish(client, subscription, period, {}, exclude);
+      await this.remember(
+        subscription,
+        period,
+        periodKeyAt(period, new Date()),
+        outcome.chosen.map((repo) => repo.fullName),
+      );
+      return { posted: true, messageUrl: outcome.message.url };
     }
 
     const slice = sliceKey(subscription.language, subscription.spokenLanguage);
@@ -72,7 +107,13 @@ export class Deliverer {
 
     const previous = await this.reports.previous(period, report.key, slice);
     const publish = this.deps.publishReport ?? publishReport;
-    const message = await publish(client, subscription, report, previous);
-    return { posted: true, report, messageUrl: message.url };
+    const outcome = await publish(client, subscription, report, previous, exclude);
+    await this.remember(
+      subscription,
+      period,
+      report.key,
+      outcome.chosen.map((repo) => repo.fullName),
+    );
+    return { posted: true, report, messageUrl: outcome.message.url };
   }
 }

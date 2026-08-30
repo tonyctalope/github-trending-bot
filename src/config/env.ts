@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import {
   DEFAULT_CAPTURE_CRON,
+  DEFAULT_COOLDOWN,
   DEFAULT_LIMIT,
+  MAX_COOLDOWN,
   DEFAULT_TIMEZONE,
   formatZodError,
   modeSchema,
@@ -35,6 +37,7 @@ export const envSchema = z.object({
   DEFAULT_LIMIT: z.coerce.number().int().min(1).max(25).default(DEFAULT_LIMIT),
   DEFAULT_STYLE: styleSchema.default('links'),
   DEFAULT_RANK: rankingSchema.default('stars'),
+  DEFAULT_COOLDOWN: z.coerce.number().int().min(0).max(MAX_COOLDOWN).default(DEFAULT_COOLDOWN),
   DEFAULT_MODE: modeSchema.default('report'),
 
   /** Boundary captures: when the trending page is frozen for each period (UTC). */

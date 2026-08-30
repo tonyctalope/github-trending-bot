@@ -5,6 +5,7 @@ import { pino } from 'pino';
 import type { Client, Message } from 'discord.js';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { Deliverer } from '../src/delivery.js';
+import { HistoryStore } from '../src/store/history.js';
 import { ReportStore } from '../src/store/reports.js';
 import { subscriptionSchema, type Subscription } from '../src/config/schema.js';
 import { sliceKey, type TrendingReport } from '../src/trending/report.js';
@@ -50,30 +51,37 @@ function subscription(overrides: Partial<Subscription> = {}): Subscription {
 
 const message = { url: 'https://discord.com/channels/1/2/3' } as unknown as Message;
 
+type Outcome = { message: Message; chosen: TrendingRepo[] };
 type PublishReportFn = (
   client: Client,
   subscription: Subscription,
   report: TrendingReport,
   previous?: TrendingReport | null,
-) => Promise<Message>;
+  exclude?: ReadonlySet<string>,
+) => Promise<Outcome>;
 type PublishLiveFn = (
   client: Client,
   subscription: Subscription,
   period: Period,
-) => Promise<Message>;
+  deps?: unknown,
+  exclude?: ReadonlySet<string>,
+) => Promise<Outcome>;
 
 let store: ReportStore;
+let history: HistoryStore;
 let publishReport: Mock<PublishReportFn>;
 let publishLive: Mock<PublishLiveFn>;
 
 beforeEach(async () => {
-  store = ReportStore.fromDataDir(await mkdtemp(join(tmpdir(), 'trending-delivery-')));
-  publishReport = vi.fn(() => Promise.resolve(message));
-  publishLive = vi.fn(() => Promise.resolve(message));
+  const dir = await mkdtemp(join(tmpdir(), 'trending-delivery-'));
+  store = ReportStore.fromDataDir(dir);
+  history = HistoryStore.fromDataDir(dir);
+  publishReport = vi.fn(() => Promise.resolve({ message, chosen: [repo('a')] }));
+  publishLive = vi.fn(() => Promise.resolve({ message, chosen: [repo('live')] }));
 });
 
 function deliverer(extra: Record<string, unknown> = {}): Deliverer {
-  return new Deliverer(store, logger, { publishReport, publishLive, ...extra });
+  return new Deliverer(store, history, logger, { publishReport, publishLive, ...extra });
 }
 
 describe('Deliverer — report mode', () => {
@@ -195,5 +203,63 @@ describe('Deliverer — slice keys', () => {
     for (const language of ['c++', 'c#', 'jupyter notebook', 'vim script']) {
       expect(sliceKey(language)).toMatch(/^__lang-[a-z0-9._-]+$/);
     }
+  });
+});
+
+describe('Deliverer — cooldown', () => {
+  it('tells the publisher what this subscription posted recently', async () => {
+    await store.save(report());
+    await history.record('sub', {
+      period: 'daily',
+      key: '2026-08-26',
+      postedAt: '2026-08-26T09:00:00.000Z',
+      repos: ['owner/a'],
+    });
+
+    await deliverer().deliver(client, subscription({ cooldown: 7 }), 'daily');
+
+    const exclude = publishReport.mock.calls[0]?.[4];
+    expect(exclude).toEqual(new Set(['owner/a']));
+  });
+
+  it('remembers what it just posted', async () => {
+    await store.save(report());
+    await deliverer().deliver(client, subscription({ cooldown: 7 }), 'daily');
+
+    expect(await history.recent('sub', 'daily', 7)).toEqual(new Set(['owner/a']));
+  });
+
+  it('remembers nothing and excludes nothing when the cooldown is off', async () => {
+    await store.save(report());
+    await deliverer().deliver(client, subscription({ cooldown: 0 }), 'daily');
+
+    expect(publishReport.mock.calls[0]?.[4]).toEqual(new Set());
+    expect(await history.recent('sub', 'daily', 7)).toEqual(new Set());
+  });
+
+  it('applies to the live snapshot as well', async () => {
+    await history.record('sub', {
+      period: 'daily',
+      key: '2026-08-26',
+      postedAt: '2026-08-26T09:00:00.000Z',
+      repos: ['owner/old'],
+    });
+
+    await deliverer().deliver(client, subscription({ mode: 'live', cooldown: 7 }), 'daily');
+
+    expect(publishLive.mock.calls[0]?.[4]).toEqual(new Set(['owner/old']));
+    // the newest entry is what was just posted; the older one is still remembered
+    expect(await history.recent('sub', 'daily', 1)).toEqual(new Set(['owner/live']));
+    expect(await history.recent('sub', 'daily', 7)).toEqual(new Set(['owner/old', 'owner/live']));
+  });
+
+  it('keeps the history of two subscriptions apart', async () => {
+    await store.save(report());
+    await deliverer().deliver(client, subscription({ id: 'one', cooldown: 7 }), 'daily');
+    await deliverer().deliver(client, subscription({ id: 'two', cooldown: 7 }), 'daily');
+
+    expect(await history.recent('one', 'daily', 7)).toEqual(new Set(['owner/a']));
+    expect(await history.recent('two', 'daily', 7)).toEqual(new Set(['owner/a']));
+    expect(publishReport.mock.calls[1]?.[4]).toEqual(new Set());
   });
 });

@@ -9,6 +9,7 @@ import {
   type GuildTextBasedChannel,
 } from 'discord.js';
 import {
+  MAX_COOLDOWN,
   MAX_LIMIT,
   MODES,
   RANKINGS,
@@ -108,8 +109,17 @@ export const trendingCommand = new SlashCommandBuilder()
       .addStringOption((option) =>
         option
           .setName('rank')
-          .setDescription('stars = biggest gain first (default) · page = GitHub own order')
+          .setDescription(
+            'stars = biggest gain (default) · momentum = fastest relative growth · page = GitHub order',
+          )
           .addChoices(...RANKINGS.map((ranking) => ({ name: ranking, value: ranking }))),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName('cooldown')
+          .setDescription('Skip repositories posted in the last N digests (default 7, 0 disables)')
+          .setMinValue(0)
+          .setMaxValue(MAX_COOLDOWN),
       ),
   )
   .addSubcommand((sub) => sub.setName('list').setDescription('List the digests configured here'))
@@ -221,7 +231,12 @@ function describeSubscription(subscription: Subscription): string {
     .join(', ');
   const extras = [
     subscription.mode === 'live' ? 'live snapshot' : 'closed period',
-    subscription.rank === 'page' ? 'GitHub order' : 'top gain',
+    subscription.rank === 'page'
+      ? 'GitHub order'
+      : subscription.rank === 'momentum'
+        ? 'fastest growth'
+        : 'top gain',
+    subscription.cooldown > 0 ? `cooldown ${String(subscription.cooldown)}` : 'no cooldown',
     subscription.language ? `lang: ${subscription.language}` : null,
     subscription.spokenLanguage ? `spoken: ${subscription.spokenLanguage}` : null,
     `top ${String(subscription.limit)}`,
@@ -277,6 +292,7 @@ async function handleSubscribe(
         style: (interaction.options.getString('style') as Style | null) ?? undefined,
         mode: (interaction.options.getString('mode') as Mode | null) ?? undefined,
         rank: (interaction.options.getString('rank') as Ranking | null) ?? undefined,
+        cooldown: interaction.options.getInteger('cooldown') ?? undefined,
       },
       interaction.user.id,
     );
@@ -354,6 +370,7 @@ async function handleNow(
     timezone: 'UTC',
     style: (interaction.options.getString('style') as Style | null) ?? 'links',
     rank: (interaction.options.getString('rank') as Ranking | null) ?? 'stars',
+    cooldown: 0,
     mode: (interaction.options.getString('source') as Mode | null) ?? 'report',
     onMissingReport: 'capture',
     managed: false,

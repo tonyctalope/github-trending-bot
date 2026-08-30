@@ -14,6 +14,7 @@ import type { Env } from './config/env.js';
 import type { Subscription } from './config/schema.js';
 import type { SubscriptionStore } from './store/subscriptions.js';
 import type { ReportStore } from './store/reports.js';
+import type { HistoryStore } from './store/history.js';
 import type { Logger } from './logger.js';
 import type { HealthStatus } from './health.js';
 
@@ -21,6 +22,7 @@ export interface BotOptions {
   env: Env;
   store: SubscriptionStore;
   reports: ReportStore;
+  history: HistoryStore;
   /** Subscriptions from the config file: reapplied at every boot. */
   managed: Subscription[];
   logger: Logger;
@@ -34,7 +36,7 @@ export class Bot {
 
   constructor(private readonly options: BotOptions) {
     this.client = createClient();
-    this.deliverer = new Deliverer(options.reports, options.logger);
+    this.deliverer = new Deliverer(options.reports, options.history, options.logger);
     this.scheduler = new Scheduler(
       async (subscription, period) => {
         const result = await this.deliverer.deliver(this.client, subscription, period);

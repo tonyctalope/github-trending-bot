@@ -15,8 +15,11 @@ defaults:
   # embed  = one embed built by the bot
   # compact = plain text, no preview
   style: links
-  # stars = biggest gain of the period first (default) | page = GitHub own order
+  # stars = biggest gain (default) | momentum = fastest relative growth | page = GitHub order
   rank: stars
+  # skip repositories posted in the last N digests, so the same project does not
+  # win every day (0 disables)
+  cooldown: 7
   mode: report # report = the period that just closed | live = the current snapshot
 
 subscriptions:

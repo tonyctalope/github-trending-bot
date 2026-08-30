@@ -1,13 +1,8 @@
 import { EmbedBuilder, escapeMarkdown, type MessageCreateOptions } from 'discord.js';
 import { buildTrendingUrl } from '../trending/client.js';
 import { formatPeriodLabel } from '../trending/period.js';
-import {
-  PERIOD_LABELS,
-  PERIOD_TITLES,
-  rankRepos,
-  type Period,
-  type TrendingRepo,
-} from '../trending/types.js';
+import { PERIOD_LABELS, PERIOD_TITLES, type Period, type TrendingRepo } from '../trending/types.js';
+import { selectRepos } from '../trending/select.js';
 import type { TrendingReport } from '../trending/report.js';
 import type { Ranking, Style } from '../config/schema.js';
 
@@ -34,6 +29,8 @@ export interface RenderOptions {
   limit: number;
   style: Style;
   ranking?: Ranking;
+  /** Repositories posted recently by this subscription, skipped when possible. */
+  exclude?: ReadonlySet<string>;
   language?: string | null;
   spokenLanguage?: string | null;
   now?: Date;
@@ -160,7 +157,11 @@ export function chunkLinkMessages(
 
 export function renderTrending(options: RenderOptions): MessageCreateOptions[] {
   const { period, style, limit } = options;
-  const repos = rankRepos(options.repos, options.ranking ?? 'stars').slice(0, limit);
+  const { chosen: repos } = selectRepos(options.repos, {
+    ranking: options.ranking ?? 'stars',
+    limit,
+    exclude: options.exclude,
+  });
   const url = buildTrendingUrl({
     period,
     language: options.language,
@@ -215,6 +216,8 @@ export interface RenderReportOptions {
   limit: number;
   style: Style;
   ranking?: Ranking;
+  /** Repositories posted recently by this subscription, skipped when possible. */
+  exclude?: ReadonlySet<string>;
 }
 
 export function renderReportTitle(report: TrendingReport): string {
@@ -239,15 +242,21 @@ const CAPTURED_AT = new Intl.DateTimeFormat('en-GB', {
 export function renderReport(options: RenderReportOptions): MessageCreateOptions[] {
   const { report, previous, style, limit } = options;
   const ranking = options.ranking ?? 'stars';
-  const ranked = rankRepos(report.repos, ranking);
-  const repos = ranked.slice(0, limit);
+  const selection = selectRepos(report.repos, { ranking, limit, exclude: options.exclude });
+  const repos = selection.chosen;
   // the movement must compare like with like: rank the previous capture too
-  const previousRanked = previous ? rankRepos(previous.repos, ranking) : undefined;
+  const previousRanked = previous
+    ? selectRepos(previous.repos, { ranking, limit: previous.repos.length }).chosen
+    : undefined;
   const title = renderReportTitle(report);
   const footerParts = [
     `captured ${CAPTURED_AT.format(new Date(report.capturedAt))} UTC`,
     `top ${String(repos.length)} of ${String(report.repos.length)}`,
   ];
+  if (selection.skipped > 0) {
+    footerParts.push(`${String(selection.skipped)} skipped (posted recently)`);
+  }
+  if (selection.fellBack) footerParts.push('cooldown ignored: every repository was on it');
   if (report.partial) footerParts.push('⚠ partial capture, not taken at the period boundary');
   const footer = footerParts.join(' · ');
 
