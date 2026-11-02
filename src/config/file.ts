@@ -45,6 +45,7 @@ export async function loadConfigFile(path: string, env: Env): Promise<LoadConfig
       mode: entry.mode ?? defaults.mode ?? env.DEFAULT_MODE,
       rank: entry.rank ?? defaults.rank ?? env.DEFAULT_RANK,
       cooldown: entry.cooldown ?? defaults.cooldown ?? env.DEFAULT_COOLDOWN,
+      exclude: entry.exclude ?? defaults.exclude ?? env.EXCLUDE,
       onMissingReport: entry.onMissingReport ?? undefined,
       language: entry.language ?? defaults.language ?? null,
       spokenLanguage: entry.spokenLanguage ?? defaults.spokenLanguage ?? null,

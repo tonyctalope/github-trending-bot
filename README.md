@@ -33,6 +33,9 @@ Run it with `docker run` and you are done.
   Monday, `monthly` on the 1st — no weekly digest spammed daily. Override with any cron expression.
 - **Filters**: by language (`typescript`, `rust`, `c++`, …), by spoken language (`fr`, `en`, …),
   and by how many repositories to include (1–25).
+- **Keyword exclusion**: drop the repositories whose name or description match a keyword
+  (whole-word, case-insensitive) — the filter for the "AI skills / MCP / agent" repos that flood
+  the charts. Set it globally with `EXCLUDE`, or per subscription.
 - **Three layouts**: `links` (default — the bare GitHub URL, so Discord renders its own
   repository card), `embed` (a rich embed built by the bot) or `compact` (plain text, no preview).
 - **Configure from Discord** (`/trending subscribe`, persisted to disk) **or from a YAML file**
@@ -180,6 +183,26 @@ out of 6, the fastest relative growth 2 out of 6, and it consistently skipped wh
 would pick (`openai/codex` was the top gainer three days running and was never elected). The
 cooldown reproduces the variety, not their exact choice.
 
+### Excluding repositories by keyword
+
+Trending is dominated by "AI skills / MCP server / agent framework" repositories. To keep them
+out of a digest, list keywords to exclude — globally with the `EXCLUDE` environment variable, or
+per subscription with `exclude:` in the config file:
+
+```
+EXCLUDE=skill,skills,mcp,agent,agents,agentic,llm,prompt,prompts,rag,chatbot
+```
+
+A repository is dropped when any keyword appears in its **name** or **description**. Matching is
+**case-insensitive** and **whole-word**, so `ai` removes `x/ai-tools` but not `y/email-server`,
+and multi-word keywords (`agent skills`) are matched as a phrase. A subscription's own `exclude`
+replaces the global default; an empty list falls back to it (there is no per-subscription
+"disable" — drop the field to inherit). Unlike the cooldown, the blocklist is never ignored, even
+if it empties the whole capture. The footnote reports how many repositories it hid.
+
+> The trending page carries no topics, only the name and description, so those two fields are
+> what the filter can see.
+
 ## Layouts
 
 | `style` | What it posts |
@@ -230,6 +253,7 @@ still posted from a capture taken on the spot and flagged `⚠ partial capture` 
 | `DEFAULT_RANK` | `stars` | `stars`, `momentum` or `page`. |
 | `DEFAULT_COOLDOWN` | `7` | Digests a repository stays out of after being posted; `0` disables. |
 | `DEFAULT_MODE` | `report` | `report` (closed period) or `live` (current snapshot). |
+| `EXCLUDE` | — | Comma-separated keywords dropped from every digest (whole-word, case-insensitive, matched on name and description), unless a subscription sets its own `exclude`. E.g. `skill,skills,mcp,agent,llm`. |
 | `CAPTURE_ENABLED` | `true` | Set to `false` to stop freezing periods (only useful with `mode: live`). |
 | `CAPTURE_TIMEZONE` | `UTC` | Time zone of the boundary captures. |
 | `CAPTURE_CRON_DAILY` | `45 23 * * *` | When the day is frozen. |

@@ -20,6 +20,17 @@ const boolean = (fallback: boolean) =>
       return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
     });
 
+/** A comma- or newline-separated list, trimmed, with blanks dropped. */
+const stringList = z
+  .string()
+  .optional()
+  .transform((value) =>
+    (value ?? '')
+      .split(/[,\n]/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0),
+  );
+
 export const envSchema = z.object({
   /** Optional here so `selfcheck` can run without secrets; required by the bot itself. */
   DISCORD_TOKEN: z.string().trim().min(1).optional(),
@@ -39,6 +50,12 @@ export const envSchema = z.object({
   DEFAULT_RANK: rankingSchema.default('stars'),
   DEFAULT_COOLDOWN: z.coerce.number().int().min(0).max(MAX_COOLDOWN).default(DEFAULT_COOLDOWN),
   DEFAULT_MODE: modeSchema.default('report'),
+  /**
+   * Keywords excluded from every digest unless a subscription sets its own
+   * `exclude`. Case-insensitive, whole-word, matched against each repository's
+   * name and description. E.g. `EXCLUDE=skill,skills,mcp,agent,llm`.
+   */
+  EXCLUDE: stringList,
 
   /** Boundary captures: when the trending page is frozen for each period (UTC). */
   CAPTURE_ENABLED: boolean(true),

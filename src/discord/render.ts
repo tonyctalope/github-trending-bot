@@ -31,6 +31,8 @@ export interface RenderOptions {
   ranking?: Ranking;
   /** Repositories posted recently by this subscription, skipped when possible. */
   exclude?: ReadonlySet<string>;
+  /** Keywords that drop a repository outright (name or description match). */
+  blocklist?: readonly string[];
   language?: string | null;
   spokenLanguage?: string | null;
   now?: Date;
@@ -161,6 +163,7 @@ export function renderTrending(options: RenderOptions): MessageCreateOptions[] {
     ranking: options.ranking ?? 'stars',
     limit,
     exclude: options.exclude,
+    blocklist: options.blocklist,
   });
   const url = buildTrendingUrl({
     period,
@@ -218,6 +221,8 @@ export interface RenderReportOptions {
   ranking?: Ranking;
   /** Repositories posted recently by this subscription, skipped when possible. */
   exclude?: ReadonlySet<string>;
+  /** Keywords that drop a repository outright (name or description match). */
+  blocklist?: readonly string[];
 }
 
 export function renderReportTitle(report: TrendingReport): string {
@@ -242,11 +247,21 @@ const CAPTURED_AT = new Intl.DateTimeFormat('en-GB', {
 export function renderReport(options: RenderReportOptions): MessageCreateOptions[] {
   const { report, previous, style, limit } = options;
   const ranking = options.ranking ?? 'stars';
-  const selection = selectRepos(report.repos, { ranking, limit, exclude: options.exclude });
+  const selection = selectRepos(report.repos, {
+    ranking,
+    limit,
+    exclude: options.exclude,
+    blocklist: options.blocklist,
+  });
   const repos = selection.chosen;
-  // the movement must compare like with like: rank the previous capture too
+  // the movement must compare like with like: rank the previous capture too,
+  // and drop the same blocklisted repositories from it
   const previousRanked = previous
-    ? selectRepos(previous.repos, { ranking, limit: previous.repos.length }).chosen
+    ? selectRepos(previous.repos, {
+        ranking,
+        limit: previous.repos.length,
+        blocklist: options.blocklist,
+      }).chosen
     : undefined;
   const title = renderReportTitle(report);
   const footerParts = [
@@ -255,6 +270,9 @@ export function renderReport(options: RenderReportOptions): MessageCreateOptions
   ];
   if (selection.skipped > 0) {
     footerParts.push(`${String(selection.skipped)} skipped (posted recently)`);
+  }
+  if (selection.blocked > 0) {
+    footerParts.push(`${String(selection.blocked)} hidden (excluded)`);
   }
   if (selection.fellBack) footerParts.push('cooldown ignored: every repository was on it');
   if (report.partial) footerParts.push('⚠ partial capture, not taken at the period boundary');

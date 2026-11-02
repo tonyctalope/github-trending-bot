@@ -373,6 +373,8 @@ async function handleNow(
     cooldown: 0,
     mode: (interaction.options.getString('source') as Mode | null) ?? 'report',
     onMissingReport: 'capture',
+    // left empty so the global EXCLUDE default still applies to an ad-hoc post
+    exclude: [],
     managed: false,
     createdBy: interaction.user.id,
     createdAt: new Date().toISOString(),

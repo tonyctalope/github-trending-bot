@@ -122,6 +122,13 @@ export const subscriptionInputSchema = z.object({
   cooldown: z.number().int().min(0).max(MAX_COOLDOWN).default(DEFAULT_COOLDOWN),
   mode: modeSchema.default('report'),
   onMissingReport: missingReportSchema.default('capture'),
+  /**
+   * Case-insensitive, whole-word keywords. A repository is dropped from the
+   * digest when any of them appears in its name or description — the filter for
+   * the "AI skills / MCP / agent" repositories. Left empty, the global `EXCLUDE`
+   * default (if any) applies instead.
+   */
+  exclude: z.array(z.string().trim().min(1)).default([]),
 });
 
 export const subscriptionSchema = subscriptionInputSchema.extend({
@@ -161,6 +168,7 @@ export const configSubscriptionSchema = z
     cooldown: z.number().int().min(0).max(MAX_COOLDOWN).optional(),
     mode: modeSchema.optional(),
     onMissingReport: missingReportSchema.optional(),
+    exclude: z.array(z.string().trim().min(1)).optional(),
   })
   .strict();
 
@@ -176,6 +184,7 @@ export const configFileSchema = z.object({
       language: z.string().trim().min(1).max(50).nullish(),
       spokenLanguage: z.string().trim().min(2).max(5).nullish(),
       cron: cronExpression.nullish(),
+      exclude: z.array(z.string().trim().min(1)).optional(),
     })
     .default({}),
   subscriptions: z.array(configSubscriptionSchema).default([]),

@@ -98,3 +98,87 @@ describe('selectRepos', () => {
     expect(chosen.map((r) => r.fullName)).toEqual(['big/steady', 'mid/riser']);
   });
 });
+
+describe('selectRepos — blocklist', () => {
+  function described(fullName: string, description: string | null): TrendingRepo {
+    return { ...repo(fullName, 100), description };
+  }
+
+  it('drops a repository whose name matches a keyword, and counts it', () => {
+    const { chosen, blocked } = selectRepos(capture, {
+      ranking: 'page',
+      limit: 10,
+      blocklist: ['steady'],
+    });
+    expect(chosen.map((r) => r.fullName)).not.toContain('big/steady');
+    expect(blocked).toBe(1);
+  });
+
+  it('drops a repository whose description matches a keyword', () => {
+    const repos = [
+      described('a/one', 'An MCP server for agents'),
+      described('b/two', 'A tiny database'),
+    ];
+    const { chosen, blocked } = selectRepos(repos, {
+      ranking: 'page',
+      limit: 10,
+      blocklist: ['mcp'],
+    });
+    expect(chosen.map((r) => r.fullName)).toEqual(['b/two']);
+    expect(blocked).toBe(1);
+  });
+
+  it('matches whole words only: "ai" does not hit "email"', () => {
+    const repos = [
+      described('a/mail', 'Self-hosted email server'),
+      described('b/bot', 'An AI agent'),
+    ];
+    const { chosen } = selectRepos(repos, { ranking: 'page', limit: 10, blocklist: ['ai'] });
+    expect(chosen.map((r) => r.fullName)).toEqual(['a/mail']);
+  });
+
+  it('is case-insensitive', () => {
+    const repos = [described('a/x', 'Claude SKILLS collection')];
+    const { chosen } = selectRepos(repos, { ranking: 'page', limit: 10, blocklist: ['skills'] });
+    expect(chosen).toHaveLength(0);
+  });
+
+  it('matches multi-word phrases without catching single words', () => {
+    const repos = [
+      described('a/x', 'curated agent skills'),
+      described('b/y', 'a skilled chef app'),
+    ];
+    const { chosen } = selectRepos(repos, {
+      ranking: 'page',
+      limit: 10,
+      blocklist: ['agent skills'],
+    });
+    expect(chosen.map((r) => r.fullName)).toEqual(['b/y']);
+  });
+
+  it('applies before the cooldown and is never ignored, even when it empties the capture', () => {
+    const repos = [
+      described('a/llm', 'An LLM toolkit'),
+      described('b/llm2', 'Another llm wrapper'),
+    ];
+    const { chosen, blocked, fellBack } = selectRepos(repos, {
+      ranking: 'page',
+      limit: 10,
+      exclude: new Set(['a/llm', 'b/llm2']),
+      blocklist: ['llm'],
+    });
+    expect(chosen).toHaveLength(0);
+    expect(blocked).toBe(2);
+    expect(fellBack).toBe(false);
+  });
+
+  it('ignores blank keywords', () => {
+    const { chosen, blocked } = selectRepos(capture, {
+      ranking: 'page',
+      limit: 10,
+      blocklist: ['', '   '],
+    });
+    expect(chosen).toHaveLength(capture.length);
+    expect(blocked).toBe(0);
+  });
+});
