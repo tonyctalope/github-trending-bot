@@ -36,7 +36,9 @@ export class Bot {
 
   constructor(private readonly options: BotOptions) {
     this.client = createClient();
-    this.deliverer = new Deliverer(options.reports, options.history, options.logger);
+    this.deliverer = new Deliverer(options.reports, options.history, options.logger, {
+      defaultExclude: options.env.EXCLUDE,
+    });
     this.scheduler = new Scheduler(
       async (subscription, period) => {
         const result = await this.deliverer.deliver(this.client, subscription, period);

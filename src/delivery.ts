@@ -20,6 +20,8 @@ export interface DeliveryDeps {
   capture?: typeof captureReport;
   publishLive?: typeof publishTrending;
   publishReport?: typeof publishReport;
+  /** Global keyword blocklist, used when a subscription sets none of its own. */
+  defaultExclude?: readonly string[];
 }
 
 /**
@@ -36,6 +38,16 @@ export class Deliverer {
     private readonly logger: Logger,
     private readonly deps: DeliveryDeps = {},
   ) {}
+
+  /**
+   * The keyword blocklist for a subscription: its own `exclude` when set, else
+   * the global default. Empty disables the filter.
+   */
+  private blocklistFor(subscription: Subscription): readonly string[] {
+    return subscription.exclude.length > 0
+      ? subscription.exclude
+      : (this.deps.defaultExclude ?? []);
+  }
 
   /** What this subscription posted recently, and should not repeat. */
   private async cooldownSet(
@@ -67,10 +79,11 @@ export class Deliverer {
     period: Period,
   ): Promise<DeliveryResult> {
     const exclude = await this.cooldownSet(subscription, period);
+    const blocklist = this.blocklistFor(subscription);
 
     if (subscription.mode === 'live') {
       const publish = this.deps.publishLive ?? publishTrending;
-      const outcome = await publish(client, subscription, period, {}, exclude);
+      const outcome = await publish(client, subscription, period, {}, exclude, blocklist);
       await this.remember(
         subscription,
         period,
@@ -107,7 +120,7 @@ export class Deliverer {
 
     const previous = await this.reports.previous(period, report.key, slice);
     const publish = this.deps.publishReport ?? publishReport;
-    const outcome = await publish(client, subscription, report, previous, exclude);
+    const outcome = await publish(client, subscription, report, previous, exclude, blocklist);
     await this.remember(
       subscription,
       period,

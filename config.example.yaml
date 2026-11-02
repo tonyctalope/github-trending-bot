@@ -21,6 +21,10 @@ defaults:
   # win every day (0 disables)
   cooldown: 7
   mode: report # report = the period that just closed | live = the current snapshot
+  # drop a repository when any keyword appears (whole-word, case-insensitive) in
+  # its name or description — the filter for "AI skills / MCP / agent" repos.
+  # Overrides the global EXCLUDE env var for the subscriptions below.
+  exclude: [skill, skills, mcp, agent, agents, agentic, llm, prompt, prompts, rag, chatbot]
 
 subscriptions:
   # Daily digest, every day at 09:00 Europe/Paris.
@@ -56,3 +60,10 @@ subscriptions:
   - channelId: '666666666666666666'
     periods: [monthly]
     onMissingReport: skip
+
+  # A channel with its own idea of noise: this list replaces the default one
+  # above for this subscription only. (An empty list falls back to the default,
+  # so there is no per-subscription "disable"; drop the field to inherit.)
+  - channelId: '777777777777777777'
+    periods: [daily]
+    exclude: [crypto, web3, nft]

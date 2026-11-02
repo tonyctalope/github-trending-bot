@@ -96,6 +96,7 @@ export async function publishTrending(
   period: Period,
   deps: PublishDeps = {},
   exclude?: ReadonlySet<string>,
+  blocklist?: readonly string[],
 ): Promise<PublishOutcome> {
   const fetchRepos = deps.fetchRepos ?? fetchTrending;
   const repos = await fetchRepos({
@@ -108,6 +109,7 @@ export async function publishTrending(
     ranking: subscription.rank,
     limit: subscription.limit,
     exclude,
+    blocklist,
   });
   const message = await sendAll(
     channel,
@@ -118,6 +120,7 @@ export async function publishTrending(
       style: subscription.style,
       ranking: subscription.rank,
       exclude,
+      blocklist,
       language: subscription.language,
       spokenLanguage: subscription.spokenLanguage,
     }),
@@ -132,12 +135,14 @@ export async function publishReport(
   report: TrendingReport,
   previous?: TrendingReport | null,
   exclude?: ReadonlySet<string>,
+  blocklist?: readonly string[],
 ): Promise<PublishOutcome> {
   const channel = await resolveChannel(client, subscription.channelId);
   const { chosen } = selectRepos(report.repos, {
     ranking: subscription.rank,
     limit: subscription.limit,
     exclude,
+    blocklist,
   });
   const message = await sendAll(
     channel,
@@ -148,6 +153,7 @@ export async function publishReport(
       style: subscription.style,
       ranking: subscription.rank,
       exclude,
+      blocklist,
     }),
   );
   return { message, chosen };

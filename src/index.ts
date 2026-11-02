@@ -93,6 +93,7 @@ async function runPost(env: Env, values: Values): Promise<number> {
     ReportStore.fromDataDir(env.DATA_DIR, logger),
     HistoryStore.fromDataDir(env.DATA_DIR, logger),
     logger,
+    { defaultExclude: env.EXCLUDE },
   );
   const client = createClient();
   const token = requireToken(env);

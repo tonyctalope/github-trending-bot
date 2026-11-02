@@ -58,6 +58,7 @@ type PublishReportFn = (
   report: TrendingReport,
   previous?: TrendingReport | null,
   exclude?: ReadonlySet<string>,
+  blocklist?: readonly string[],
 ) => Promise<Outcome>;
 type PublishLiveFn = (
   client: Client,
@@ -65,6 +66,7 @@ type PublishLiveFn = (
   period: Period,
   deps?: unknown,
   exclude?: ReadonlySet<string>,
+  blocklist?: readonly string[],
 ) => Promise<Outcome>;
 
 let store: ReportStore;
@@ -261,5 +263,45 @@ describe('Deliverer — cooldown', () => {
     expect(await history.recent('one', 'daily', 7)).toEqual(new Set(['owner/a']));
     expect(await history.recent('two', 'daily', 7)).toEqual(new Set(['owner/a']));
     expect(publishReport.mock.calls[1]?.[4]).toEqual(new Set());
+  });
+});
+
+describe('Deliverer — blocklist', () => {
+  it('passes the global default blocklist to the publisher', async () => {
+    await store.save(report());
+
+    await deliverer({ defaultExclude: ['skill', 'mcp'] }).deliver(client, subscription(), 'daily');
+
+    expect(publishReport.mock.calls[0]?.[5]).toEqual(['skill', 'mcp']);
+  });
+
+  it('lets a subscription override the global default', async () => {
+    await store.save(report());
+
+    await deliverer({ defaultExclude: ['skill'] }).deliver(
+      client,
+      subscription({ exclude: ['llm'] }),
+      'daily',
+    );
+
+    expect(publishReport.mock.calls[0]?.[5]).toEqual(['llm']);
+  });
+
+  it('passes an empty blocklist when neither is set', async () => {
+    await store.save(report());
+
+    await deliverer().deliver(client, subscription(), 'daily');
+
+    expect(publishReport.mock.calls[0]?.[5]).toEqual([]);
+  });
+
+  it('applies to the live snapshot too', async () => {
+    await deliverer({ defaultExclude: ['agent'] }).deliver(
+      client,
+      subscription({ mode: 'live' }),
+      'daily',
+    );
+
+    expect(publishLive.mock.calls[0]?.[5]).toEqual(['agent']);
   });
 });
